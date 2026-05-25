@@ -1,8 +1,11 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
-import { getDbPath, getDb, closeDb } from './persistence/database'
+import { getDbPath, closeDb } from './persistence/database'
 import { runMigrations } from './persistence/migrate'
+import { getSettings, setSettings } from './persistence/repositories/settingsRepository'
+
+const ALLOWED_URL_SCHEMES = ['https:', 'http:']
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -24,7 +27,14 @@ function createWindow(): BrowserWindow {
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    try {
+      const parsed = new URL(details.url)
+      if (ALLOWED_URL_SCHEMES.includes(parsed.protocol)) {
+        shell.openExternal(details.url)
+      }
+    } catch {
+      // ignore unparseable URLs
+    }
     return { action: 'deny' }
   })
 
@@ -41,16 +51,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle('app:getVersion', () => '0.1.0')
 
   ipcMain.handle('app:getSettings', () => {
-    return {
-      deepseekApiKey: '',
-      model: 'deepseek-chat',
-      dailyMinutes: 60,
-      reminderTime: '09:00'
-    }
+    return getSettings()
   })
 
-  ipcMain.handle('app:setSettings', (_event, settings) => {
-    return { ...settings }
+  ipcMain.handle('app:setSettings', (_event, partial) => {
+    return setSettings(partial)
   })
 
   ipcMain.handle('app:getDbPath', () => getDbPath())

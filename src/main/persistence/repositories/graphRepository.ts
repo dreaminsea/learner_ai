@@ -147,19 +147,59 @@ export async function deleteEdge(id: string): Promise<void> {
 // ---- Patch (agent-generated changes) ----
 
 export async function applyGraphPatch(patch: KnowledgeGraphPatch): Promise<void> {
-  for (const node of patch.addedNodes) {
-    await createNode(node)
-  }
-  for (const { id, changes } of patch.updatedNodes) {
-    await updateNode(id, changes)
-  }
-  for (const id of patch.removedNodeIds) {
-    await deleteNode(id)
-  }
-  for (const edge of patch.addedEdges) {
-    await createEdge(edge)
-  }
-  for (const id of patch.removedEdgeIds) {
-    await deleteEdge(id)
-  }
+  const db = getDb()
+
+  db.transaction((tx) => {
+    for (const node of patch.addedNodes) {
+      tx.insert(knowledgeNodes).values({
+        id: node.id,
+        label: node.label,
+        subject: node.subject,
+        type: node.type,
+        description: node.description,
+        mastery: node.mastery,
+        confidence: node.confidence,
+        sourceIds: node.sourceIds,
+        lastStudiedAt: node.lastStudiedAt,
+        createdAt: node.createdAt,
+        updatedAt: node.updatedAt,
+        metadata: node.metadata
+      }).run()
+    }
+
+    for (const { id, changes } of patch.updatedNodes) {
+      const set: Record<string, unknown> = { updatedAt: new Date().toISOString() }
+      if (changes.label !== undefined) set['label'] = changes.label
+      if (changes.description !== undefined) set['description'] = changes.description
+      if (changes.mastery !== undefined) set['mastery'] = changes.mastery
+      if (changes.confidence !== undefined) set['confidence'] = changes.confidence
+      if (changes.lastStudiedAt !== undefined) set['lastStudiedAt'] = changes.lastStudiedAt
+      if (changes.sourceIds !== undefined) set['sourceIds'] = changes.sourceIds
+      if (changes.metadata !== undefined) set['metadata'] = changes.metadata
+      tx.update(knowledgeNodes).set(set).where(eq(knowledgeNodes.id, id)).run()
+    }
+
+    for (const id of patch.removedNodeIds) {
+      tx.delete(knowledgeEdges).where(eq(knowledgeEdges.fromNodeId, id)).run()
+      tx.delete(knowledgeEdges).where(eq(knowledgeEdges.toNodeId, id)).run()
+      tx.delete(knowledgeNodes).where(eq(knowledgeNodes.id, id)).run()
+    }
+
+    for (const edge of patch.addedEdges) {
+      tx.insert(knowledgeEdges).values({
+        id: edge.id,
+        fromNodeId: edge.fromNodeId,
+        toNodeId: edge.toNodeId,
+        type: edge.type,
+        weight: edge.weight,
+        evidence: edge.evidence,
+        createdAt: edge.createdAt,
+        metadata: edge.metadata
+      }).run()
+    }
+
+    for (const id of patch.removedEdgeIds) {
+      tx.delete(knowledgeEdges).where(eq(knowledgeEdges.id, id)).run()
+    }
+  })
 }

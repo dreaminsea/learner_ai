@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { HashRouter, Routes, Route } from 'react-router-dom'
 import { Sidebar } from './components/Sidebar'
 import DashboardPage from './pages/DashboardPage'
 import PlanPage from './pages/PlanPage'
@@ -9,7 +9,7 @@ import SettingsPage from './pages/SettingsPage'
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <div className="flex h-screen bg-background">
         <Sidebar />
         <main className="flex-1 overflow-auto">
@@ -23,6 +23,6 @@ export default function App() {
           </Routes>
         </main>
       </div>
-    </BrowserRouter>
+    </HashRouter>
   )
 }

@@ -9,8 +9,13 @@ let dbInstance: BetterSQLite3Database<typeof schema> | null = null
 let rawDb: any = null
 
 export function getDbPath(): string {
-  const userData = app.getPath('userData')
-  return join(userData, 'learner_ai.db')
+  try {
+    const userData = app.getPath('userData')
+    return join(userData, 'learner_ai.db')
+  } catch {
+    // Fallback for standalone scripts (npm run db:migrate)
+    return join(process.cwd(), 'dev.db')
+  }
 }
 
 export function getDb(): BetterSQLite3Database<typeof schema> {

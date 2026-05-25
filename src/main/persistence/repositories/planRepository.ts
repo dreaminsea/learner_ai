@@ -5,48 +5,51 @@ import type { StudyPlan, PlanStage, PlanTask, TaskStatus } from '@shared/types'
 
 export async function createPlan(plan: StudyPlan): Promise<StudyPlan> {
   const db = getDb()
-  db.insert(plans).values({
-    id: plan.id,
-    title: plan.title,
-    subject: plan.subject,
-    goal: plan.goal,
-    userLevel: plan.userLevel,
-    status: plan.status,
-    createdAt: plan.createdAt,
-    updatedAt: plan.updatedAt,
-    metadata: plan.metadata
-  }).run()
 
-  for (const stage of plan.stages) {
-    db.insert(planStages).values({
-      id: stage.id,
-      planId: stage.planId,
-      title: stage.title,
-      description: stage.description,
-      order: stage.order,
-      estimatedDays: stage.estimatedDays,
-      learningObjectives: stage.learningObjectives,
-      metadata: stage.metadata
+  db.transaction((tx) => {
+    tx.insert(plans).values({
+      id: plan.id,
+      title: plan.title,
+      subject: plan.subject,
+      goal: plan.goal,
+      userLevel: plan.userLevel,
+      status: plan.status,
+      createdAt: plan.createdAt,
+      updatedAt: plan.updatedAt,
+      metadata: plan.metadata
     }).run()
 
-    for (const task of stage.tasks) {
-      db.insert(planTasks).values({
-        id: task.id,
-        stageId: task.stageId,
-        dayIndex: task.dayIndex,
-        title: task.title,
-        type: task.type,
-        estimatedMinutes: task.estimatedMinutes,
-        objectives: task.objectives,
-        knowledgeNodeRefs: task.knowledgeNodeRefs,
-        lectureId: task.lectureId,
-        assessmentId: task.assessmentId,
-        status: task.status,
-        completedAt: task.completedAt,
-        metadata: task.metadata
+    for (const stage of plan.stages) {
+      tx.insert(planStages).values({
+        id: stage.id,
+        planId: stage.planId,
+        title: stage.title,
+        description: stage.description,
+        order: stage.order,
+        estimatedDays: stage.estimatedDays,
+        learningObjectives: stage.learningObjectives,
+        metadata: stage.metadata
       }).run()
+
+      for (const task of stage.tasks) {
+        tx.insert(planTasks).values({
+          id: task.id,
+          stageId: task.stageId,
+          dayIndex: task.dayIndex,
+          title: task.title,
+          type: task.type,
+          estimatedMinutes: task.estimatedMinutes,
+          objectives: task.objectives,
+          knowledgeNodeRefs: task.knowledgeNodeRefs,
+          lectureId: task.lectureId,
+          assessmentId: task.assessmentId,
+          status: task.status,
+          completedAt: task.completedAt,
+          metadata: task.metadata
+        }).run()
+      }
     }
-  }
+  })
 
   return plan
 }
