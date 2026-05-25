@@ -58,10 +58,12 @@
     }
   },
   "dependencies": {
+    "@types/dagre": "^0.7.54",
     "@types/sql.js": "^1.4.11",
     "@xyflow/react": "^12.10.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dagre": "^0.8.5",
     "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.16.0",
     "openai": "^6.39.0",

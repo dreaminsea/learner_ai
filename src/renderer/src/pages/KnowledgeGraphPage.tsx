@@ -1,17 +1,10 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import {
-  ReactFlow,
-  Node,
-  Edge,
-  Controls,
-  Background,
-  BackgroundVariant,
-  useNodesState,
-  useEdgesState,
-  Handle,
-  Position
+  ReactFlow, Node, Edge, Controls, Background, BackgroundVariant,
+  useNodesState, useEdgesState, Handle, Position
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import dagre from 'dagre'
 import { Search, X } from 'lucide-react'
 
 interface NodeDetail {
@@ -33,47 +26,61 @@ function masteryColor(m: number): string {
   return '#ef4444'
 }
 
-// Minimal Obsidian-style node
-function DotNode({ data }: { data: Record<string, unknown> }) {
+// Tree layout with dagre
+function layoutTree(nodes: Node[], edges: Edge[]): Node[] {
+  const g = new dagre.graphlib.Graph()
+  g.setDefaultEdgeLabel(() => ({}))
+  g.setGraph({ rankdir: 'TB', nodesep: 60, ranksep: 80, marginx: 40, marginy: 40 })
+
+  for (const n of nodes) {
+    g.setNode(n.id, { width: 120, height: 40 })
+  }
+  for (const e of edges) {
+    g.setEdge(e.source, e.target)
+  }
+
+  dagre.layout(g)
+
+  return nodes.map((n) => {
+    const pos = g.node(n.id)
+    return {
+      ...n,
+      position: { x: pos.x - 60, y: pos.y - 20 }
+    }
+  })
+}
+
+// Node with always-visible label
+function LabelNode({ data, selected }: { data: Record<string, unknown>; selected?: boolean }) {
   const m = (data.mastery as number) ?? 0
   const color = masteryColor(m)
-  const size = 8 + (m / 100) * 8 // 8-16px radius based on mastery
+  const r = 5 + (m / 100) * 6 // 5-11px ball
+
   return (
-    <div className="group relative">
+    <div
+      className={`flex items-center gap-2 px-3 py-1.5 rounded-full border-2 cursor-pointer text-sm transition-all ${
+        selected ? 'border-primary ring-2 ring-primary/20 scale-110' : 'border-transparent hover:border-muted-foreground/30'
+      }`}
+      style={{ backgroundColor: `${color}15` }}
+    >
       <Handle type="target" position={Position.Top} style={{ visibility: 'hidden' }} />
       <div
-        className="rounded-full cursor-pointer transition-transform hover:scale-150"
+        className="shrink-0 rounded-full"
         style={{
-          width: size * 2,
-          height: size * 2,
+          width: r * 2, height: r * 2,
           backgroundColor: color,
-          boxShadow: `0 0 6px ${color}40`
+          boxShadow: `0 0 4px ${color}60`
         }}
       />
-      {/* Label on hover */}
-      <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-        <span className="block whitespace-nowrap rounded bg-popover px-2 py-1 text-xs shadow-sm border">
-          {data.label as string}
-          <span className="ml-1 text-muted-foreground">{m}%</span>
-        </span>
-      </div>
+      <span className="whitespace-nowrap font-medium text-foreground/90">
+        {data.label as string}
+      </span>
       <Handle type="source" position={Position.Bottom} style={{ visibility: 'hidden' }} />
     </div>
   )
 }
 
-const nodeTypes = { knowledgeNode: DotNode }
-
-function layoutGrid(nodes: Node[]): Node[] {
-  const cols = Math.ceil(Math.sqrt(nodes.length))
-  return nodes.map((node, i) => ({
-    ...node,
-    position: {
-      x: (i % cols) * 100 + 60,
-      y: Math.floor(i / cols) * 100 + 60
-    }
-  }))
-}
+const nodeTypes = { knowledgeNode: LabelNode }
 
 export default function KnowledgeGraphPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
@@ -88,7 +95,8 @@ export default function KnowledgeGraphPage() {
     try {
       const data = await window.learnerAI.graph.get() as { nodes: Node[]; edges: Edge[] }
       if (data?.nodes?.length) {
-        setNodes(layoutGrid(data.nodes))
+        const positioned = layoutTree(data.nodes, data.edges ?? [])
+        setNodes(positioned)
         setEdges(data.edges ?? [])
       }
     } catch { /* ignore */ }
@@ -102,11 +110,22 @@ export default function KnowledgeGraphPage() {
     } catch { /* ignore */ }
   }, [])
 
-  const filteredNodes = search
-    ? nodes.filter((n) => (n.data.label as string).toLowerCase().includes(search.toLowerCase()))
-    : nodes
-  const filteredIds = new Set(filteredNodes.map((n) => n.id))
-  const filteredEdges = edges.filter((e) => filteredIds.has(e.source) && filteredIds.has(e.target))
+  // Re-layout when search filter changes
+  const displayNodes = useMemo(() => {
+    if (!search) return nodes
+    const ids = new Set(
+      nodes.filter((n) => (n.data.label as string).toLowerCase().includes(search.toLowerCase())).map((n) => n.id)
+    )
+    const filtered = nodes.filter((n) => ids.has(n.id))
+    const filteredEdges = edges.filter((e) => ids.has(e.source) && ids.has(e.target))
+    return layoutTree(filtered, filteredEdges)
+  }, [nodes, edges, search])
+
+  const displayEdges = useMemo(() => {
+    if (!search) return edges
+    const ids = new Set(displayNodes.map((n) => n.id))
+    return edges.filter((e) => ids.has(e.source) && ids.has(e.target))
+  }, [edges, search, displayNodes])
 
   if (loading) {
     return (
@@ -123,10 +142,13 @@ export default function KnowledgeGraphPage() {
           <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
             <div className="text-center space-y-2">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                <svg className="h-8 w-8 text-muted-foreground/40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="3" /><circle cx="6" cy="6" r="1.5" /><circle cx="18" cy="6" r="1.5" /><circle cx="6" cy="18" r="1.5" /><circle cx="18" cy="18" r="1.5" /><line x1="6" y1="6" x2="12" y2="12" /><line x1="18" y1="6" x2="12" y2="12" /><line x1="6" y1="18" x2="12" y2="12" /><line x1="18" y1="18" x2="12" y2="12" /></svg>
+                <svg className="h-8 w-8 text-muted-foreground/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <circle cx="12" cy="4" r="2" /><circle cx="6" cy="14" r="2" /><circle cx="18" cy="14" r="2" />
+                  <line x1="12" y1="6" x2="6" y2="12" /><line x1="12" y1="6" x2="18" y2="12" />
+                </svg>
               </div>
               <p>知识网络为空</p>
-              <p className="text-xs">创建学习计划后，知识点将自动出现在这里</p>
+              <p className="text-xs">创建学习计划后，知识点将自动出现</p>
             </div>
           </div>
         ) : (
@@ -142,26 +164,26 @@ export default function KnowledgeGraphPage() {
               {search && <button onClick={() => setSearch('')}><X className="h-3 w-3 text-muted-foreground" /></button>}
             </div>
 
-            {/* Legend */}
-            <div className="absolute bottom-3 left-3 z-10 rounded-lg border bg-card px-3 py-2 shadow-sm text-xs space-y-1">
-              <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-red-500" /> 0-30%</div>
-              <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" /> 30-60%</div>
-              <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-yellow-500" /> 60-80%</div>
-              <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-green-500" /> 80-100%</div>
+            <div className="absolute bottom-3 left-3 z-10 rounded-lg border bg-card px-3 py-2 shadow-sm text-xs space-y-0.5">
+              <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-red-500" /> 0-30%</div>
+              <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-amber-500" /> 30-60%</div>
+              <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-yellow-500" /> 60-80%</div>
+              <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-green-500" /> 80-100%</div>
             </div>
 
             <ReactFlow
-              nodes={filteredNodes}
-              edges={filteredEdges}
+              nodes={displayNodes}
+              edges={displayEdges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onNodeClick={onNodeClick}
               nodeTypes={nodeTypes}
               fitView
               fitViewOptions={{ padding: 0.3 }}
+              nodesDraggable={false}
               defaultEdgeOptions={{
-                style: { stroke: '#d1d5db', strokeWidth: 1 },
-                type: 'default'
+                style: { stroke: '#d1d5db', strokeWidth: 1.5 },
+                type: 'smoothstep'
               }}
             >
               <Controls showZoom showFitView={false} position="bottom-right" />
@@ -171,19 +193,15 @@ export default function KnowledgeGraphPage() {
         )}
       </div>
 
-      {/* Detail sidebar */}
       {selectedNode && (
         <div className="w-72 shrink-0 border-l bg-card overflow-auto p-4 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold">{selectedNode.node.label}</h3>
             <button onClick={() => setSelectedNode(null)} className="p-1 hover:bg-muted rounded"><X className="h-4 w-4" /></button>
           </div>
-
           <div className="space-y-1 text-sm">
-            <span className="text-xs text-muted-foreground">类型 · </span>
-            <span>{TYPE_LABELS[selectedNode.node.type] ?? selectedNode.node.type}</span>
+            <span className="text-xs text-muted-foreground">{TYPE_LABELS[selectedNode.node.type] ?? selectedNode.node.type}</span>
           </div>
-
           <div>
             <span className="text-xs text-muted-foreground">掌握度</span>
             <div className="flex items-center gap-2 mt-1">
@@ -196,18 +214,10 @@ export default function KnowledgeGraphPage() {
               <span className="text-xs font-bold">{selectedNode.node.mastery}%</span>
             </div>
           </div>
-
           {selectedNode.node.description && (
             <p className="text-sm text-muted-foreground">{selectedNode.node.description}</p>
           )}
-
-          <div className="text-xs text-muted-foreground">
-            学科: {selectedNode.node.subject}
-          </div>
-
-          <div className="text-xs text-muted-foreground">
-            创建于 {new Date(selectedNode.node.createdAt).toLocaleDateString('zh-CN')}
-          </div>
+          <div className="text-xs text-muted-foreground">学科: {selectedNode.node.subject}</div>
         </div>
       )}
     </div>
