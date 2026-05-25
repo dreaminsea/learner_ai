@@ -45,6 +45,27 @@ export async function getNode(nodeId: string): Promise<KnowledgeNode | null> {
   }
 }
 
+export async function listAllNodes(): Promise<KnowledgeNode[]> {
+  const db = getDb()
+  const rows = db.select().from(knowledgeNodes).all()
+  return rows.map((row) => ({
+    id: row.id, label: row.label, subject: row.subject, type: row.type,
+    description: row.description, mastery: row.mastery, confidence: row.confidence,
+    sourceIds: row.sourceIds as string[], lastStudiedAt: row.lastStudiedAt ?? undefined,
+    createdAt: row.createdAt, updatedAt: row.updatedAt, metadata: row.metadata as Record<string, unknown>
+  }))
+}
+
+export async function listAllEdges(): Promise<KnowledgeEdge[]> {
+  const db = getDb()
+  const rows = db.select().from(knowledgeEdges).all()
+  return rows.map((row) => ({
+    id: row.id, fromNodeId: row.fromNodeId, toNodeId: row.toNodeId,
+    type: row.type, weight: row.weight, evidence: row.evidence,
+    createdAt: row.createdAt, metadata: row.metadata as Record<string, unknown>
+  }))
+}
+
 export async function listNodesBySubject(subject: string): Promise<KnowledgeNode[]> {
   const db = getDb()
   const rows = db.select().from(knowledgeNodes)

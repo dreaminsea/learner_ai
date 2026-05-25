@@ -1,22 +1,12 @@
 import { ipcMain } from 'electron'
-import { getNode, listNodesBySubject, getEdgesForNode, createNode, createEdge } from '../persistence/repositories/graphRepository'
+import { getNode, listAllNodes, listAllEdges, listNodesBySubject, getEdgesForNode, createNode, createEdge } from '../persistence/repositories/graphRepository'
 import type { KnowledgeNode, KnowledgeEdge } from '@shared/types'
 
 export function registerGraphIpcHandlers(): void {
   // Return React Flow-compatible graph data
   ipcMain.handle('graph:get', async (_event, subject?: string) => {
-    const nodes = subject ? await listNodesBySubject(subject) : []
-
-    // Collect all edges for these nodes
-    const allEdges: KnowledgeEdge[] = []
-    for (const node of nodes) {
-      const edges = await getEdgesForNode(node.id)
-      for (const e of edges) {
-        if (!allEdges.some((ae) => ae.id === e.id)) {
-          allEdges.push(e)
-        }
-      }
-    }
+    const nodes = subject ? await listNodesBySubject(subject) : await listAllNodes()
+    const allEdges = await listAllEdges()
 
     return {
       nodes: nodes.map((n) => ({
