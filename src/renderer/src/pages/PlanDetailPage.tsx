@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '../components/ui/button'
-import { ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, Loader2, CheckCircle2, Clock, Brain, ChevronDown, ChevronRight } from 'lucide-react'
 import type { StudyPlan, PlanStage, PlanTask } from '@shared/types'
 
 const STATUS_LABELS: Record<string, string> = {
@@ -11,11 +11,47 @@ const TASK_TYPE_LABELS: Record<string, string> = {
   learn: '学习', practice: '练习', review: '复习', assessment: '检测', project: '项目'
 }
 
+// ---- Module-level generation tracking ----
+
+interface GenEntry {
+  taskId: string
+  taskTitle: string
+  thinking: string
+  done: boolean
+}
+const lectureGens = new Map<string, GenEntry>()
+let genRerender: (() => void) | null = null
+let genListenerRegistered = false
+
+function ensureGenListener(): void {
+  if (genListenerRegistered) return
+  genListenerRegistered = true
+
+  window.learnerAI.lecture.onGenThinking((data: unknown) => {
+    const d = data as { taskId: string; content: string }
+    const entry = lectureGens.get(d.taskId) ?? { taskId: d.taskId, taskTitle: '', thinking: '', done: false }
+    entry.thinking += d.content
+    lectureGens.set(d.taskId, entry)
+    genRerender?.()
+  })
+
+  window.learnerAI.lecture.onGenerated((data: unknown) => {
+    const r = data as { taskId: string; status: string }
+    if (r.status === 'completed') {
+      const entry = lectureGens.get(r.taskId)
+      if (entry) { entry.done = true; lectureGens.set(r.taskId, entry) }
+      setTimeout(() => { lectureGens.delete(r.taskId); genRerender?.() }, 3000)
+    } else if (r.status === 'failed') {
+      lectureGens.delete(r.taskId)
+    }
+    if (genRerender) genRerender()
+  })
+}
+
+// ---- Components ----
+
 function TaskRow({ task, generating, hasLecture, onClick }: {
-  task: PlanTask
-  generating: boolean
-  hasLecture: boolean
-  onClick: () => void
+  task: PlanTask; generating: boolean; hasLecture: boolean; onClick: () => void
 }) {
   return (
     <li
@@ -50,12 +86,8 @@ function TaskRow({ task, generating, hasLecture, onClick }: {
   )
 }
 
-function StageCard({ stage, index, generatingTasks, completedLectures, onTaskClick }: {
-  stage: PlanStage
-  index: number
-  generatingTasks: Set<string>
-  completedLectures: Set<string>
-  onTaskClick: (taskId: string) => void
+function StageCard({ stage, index, generatingTasks, onTaskClick }: {
+  stage: PlanStage; index: number; generatingTasks: Set<string>; onTaskClick: (taskId: string) => void
 }) {
   return (
     <div className="rounded-lg border bg-card shadow-sm">
@@ -77,7 +109,7 @@ function StageCard({ stage, index, generatingTasks, completedLectures, onTaskCli
             key={task.id}
             task={task}
             generating={generatingTasks.has(task.id)}
-            hasLecture={completedLectures.has(task.id)}
+            hasLecture={!!task.lectureId}
             onClick={() => onTaskClick(task.id)}
           />
         ))}
@@ -86,13 +118,65 @@ function StageCard({ stage, index, generatingTasks, completedLectures, onTaskCli
   )
 }
 
+function GenerationPanel() {
+  const entries = Array.from(lectureGens.values())
+  const [expanded, setExpanded] = useState(true)
+  if (entries.length === 0) return null
+
+  const pending = entries.filter((e) => !e.done).length
+
+  return (
+    <div className="rounded-lg border bg-card shadow-sm">
+      <button
+        className="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+        正在生成 {entries.length} 份讲义
+        {pending > 0 && <span className="text-xs text-muted-foreground">({pending} 进行中)</span>}
+        {expanded ? <ChevronDown className="ml-auto h-4 w-4" /> : <ChevronRight className="ml-auto h-4 w-4" />}
+      </button>
+      {expanded && (
+        <div className="border-t space-y-2 p-3">
+          {entries.map((e) => (
+            <div key={e.taskId} className="rounded border bg-muted/30 p-3">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="font-medium truncate flex-1">{e.taskTitle}</span>
+                {e.done ? (
+                  <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                ) : (
+                  <Loader2 className="h-4 w-4 animate-spin text-blue-500 shrink-0" />
+                )}
+              </div>
+              {e.thinking && (
+                <details className="mt-2">
+                  <summary className="flex items-center gap-1 cursor-pointer text-xs text-purple-600">
+                    <Brain className="h-3 w-3" /> 推理过程 ({e.thinking.length} 字)
+                  </summary>
+                  <pre className="mt-1 max-h-32 overflow-auto rounded bg-purple-50/50 p-2 text-xs text-purple-800 whitespace-pre-wrap">{e.thinking}</pre>
+                </details>
+              )}
+              {!e.done && !e.thinking && (
+                <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
+                  <Clock className="h-3 w-3" /> 等待 AI 响应…
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---- Main Component ----
+
 export default function PlanDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [plan, setPlan] = useState<StudyPlan | null>(null)
   const [loading, setLoading] = useState(true)
-  const [generatingTasks, setGeneratingTasks] = useState<Set<string>>(new Set())
-  const [completedLectures, setCompletedLectures] = useState<Set<string>>(new Set())
+  const [tick, setTick] = useState(0)
 
   useEffect(() => {
     if (!id) return
@@ -101,30 +185,41 @@ export default function PlanDetailPage() {
       .finally(() => setLoading(false))
   }, [id])
 
-  // Check pending generations and listen for completion
   useEffect(() => {
+    ensureGenListener()
+    genRerender = () => setTick((t) => t + 1)
+
+    // Check pending generations
     window.learnerAI.lecture.pending().then((tasks: string[]) => {
-      setGeneratingTasks(new Set(tasks))
-    })
-    const unlisten = window.learnerAI.lecture.onGenerated((result: unknown) => {
-      const r = result as { taskId: string; status: string }
-      setGeneratingTasks((prev) => {
-        const next = new Set(prev)
-        next.delete(r.taskId)
-        return next
-      })
-      if (r.status === 'completed') {
-        setCompletedLectures((prev) => new Set([...prev, r.taskId]))
+      for (const taskId of tasks) {
+        if (!lectureGens.has(taskId)) {
+          lectureGens.set(taskId, { taskId, taskTitle: '', thinking: '', done: false })
+        }
       }
+      if (genRerender) genRerender()
     })
-    return () => { unlisten() }
+
+    return () => { genRerender = null }
   }, [])
 
-  async function handleTaskClick(taskId: string): Promise<void> {
+  // Compute generating tasks from module-level map
+  const generatingTaskIds = new Set(
+    Array.from(lectureGens.values()).filter((e) => !e.done).map((e) => e.taskId)
+  )
+
+  async function handleTaskClick(taskId: string, taskTitle: string): Promise<void> {
+    // If already generated, navigate directly
+    if (plan?.stages.some((s) => (s.tasks ?? []).some((t) => t.id === taskId && !!t.lectureId))) {
+      navigate(`/lecture/${taskId}`)
+      return
+    }
+
+    // Add to generation panel
+    lectureGens.set(taskId, { taskId, taskTitle, thinking: '', done: false })
+    genRerender?.()
+
     // Kick off background generation
     await window.learnerAI.lecture.generate(taskId)
-    setGeneratingTasks((prev) => new Set([...prev, taskId]))
-    // Navigate to lecture page — it will show loading if not ready
     navigate(`/lecture/${taskId}`)
   }
 
@@ -167,15 +262,20 @@ export default function PlanDetailPage() {
           </p>
         </div>
       </div>
+
+      <GenerationPanel key={tick} />
+
       <div className="space-y-4">
         {plan.stages.map((stage, i) => (
           <StageCard
             key={stage.id}
             stage={stage}
             index={i}
-            generatingTasks={generatingTasks}
-            completedLectures={completedLectures}
-            onTaskClick={handleTaskClick}
+            generatingTasks={generatingTaskIds}
+            onTaskClick={(taskId) => {
+              const task = (stage.tasks ?? []).find((t) => t.id === taskId)
+              handleTaskClick(taskId, task?.title ?? '')
+            }}
           />
         ))}
       </div>

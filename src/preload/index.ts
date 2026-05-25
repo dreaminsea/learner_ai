@@ -27,14 +27,20 @@ export type LearnerAIAPI = {
     generate: (taskId: string) => Promise<unknown>
     pending: () => Promise<string[]>
     onGenerated: (callback: (result: unknown) => void) => () => void
+    onGenThinking: (callback: (data: unknown) => void) => () => void
   }
 }
 
 type GeneratedCallback = (result: unknown) => void
 const generatedCallbacks = new Set<GeneratedCallback>()
+type ThinkingCallback = (data: unknown) => void
+const thinkingCallbacks = new Set<ThinkingCallback>()
 
 ipcRenderer.on('lecture:generated', (_event, result: unknown) => {
   generatedCallbacks.forEach((cb) => cb(result))
+})
+ipcRenderer.on('lecture:genThinking', (_event, data: unknown) => {
+  thinkingCallbacks.forEach((cb) => cb(data))
 })
 
 type StreamCallback = (chunk: unknown) => void
@@ -77,6 +83,10 @@ const api: LearnerAIAPI = {
     onGenerated: (callback: GeneratedCallback) => {
       generatedCallbacks.add(callback)
       return () => { generatedCallbacks.delete(callback) }
+    },
+    onGenThinking: (callback: ThinkingCallback) => {
+      thinkingCallbacks.add(callback)
+      return () => { thinkingCallbacks.delete(callback) }
     }
   }
 }

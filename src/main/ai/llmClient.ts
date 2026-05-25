@@ -14,6 +14,7 @@ export interface LLMGenerateInput {
   responseSchema: ZodSchema
   maxTokens?: number
   temperature?: number
+  onThinking?: (content: string) => void
 }
 
 export interface LLMGenerateResult<T> {

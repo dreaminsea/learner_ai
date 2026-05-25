@@ -14,6 +14,7 @@ export interface LectureGenerationContext {
   subject: string
   userLevel: string
   knowledgeNodes: string[]
+  onThinking?: (content: string) => void
   rawResponse?: {
     title: string
     audienceLevel?: string
@@ -85,7 +86,8 @@ export const callLLM: PipelineStep = async (ctx, client) => {
     userPrompt,
     responseSchema: lectureSchema,
     maxTokens: prompt.maxTokens,
-    temperature: prompt.temperature
+    temperature: prompt.temperature,
+    onThinking: ctx.onThinking
   })
 
   ctx.rawResponse = result.data
@@ -169,15 +171,16 @@ const defaultPipeline: PipelineStep[] = [
   validateAndEnrich
 ]
 
-export function buildPipeline(steps: PipelineStep[]): (taskId: string, client?: LLMClient) => Promise<Lecture> {
-  return async (taskId: string, client?: LLMClient) => {
-    const llm = client ?? new DeepSeekClient()
+export function buildPipeline(steps: PipelineStep[]): (taskId: string, opts?: { client?: LLMClient; onThinking?: (c: string) => void }) => Promise<Lecture> {
+  return async (taskId: string, opts?: { client?: LLMClient; onThinking?: (c: string) => void }) => {
+    const llm = opts?.client ?? new DeepSeekClient()
     let ctx: LectureGenerationContext = {
       taskId,
       taskTitle: '',
       subject: '',
       userLevel: '',
-      knowledgeNodes: []
+      knowledgeNodes: [],
+      onThinking: opts?.onThinking
     }
     for (const step of steps) {
       ctx = await step(ctx, llm)
@@ -192,6 +195,9 @@ const defaultGenerate = buildPipeline(defaultPipeline)
 /**
  * Generate a lecture using the default pipeline
  */
-export async function generateLecture(taskId: string, client?: LLMClient): Promise<Lecture> {
-  return defaultGenerate(taskId, client)
+export async function generateLecture(
+  taskId: string,
+  opts?: { client?: LLMClient; onThinking?: (c: string) => void }
+): Promise<Lecture> {
+  return defaultGenerate(taskId, opts)
 }

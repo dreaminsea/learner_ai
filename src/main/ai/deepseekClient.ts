@@ -77,6 +77,11 @@ export class DeepSeekClient implements LLMClient {
       choice.message as unknown as { reasoning_content?: string }
     ).reasoning_content
 
+    // Push CoT to callback if provided
+    if (reasoningContent && input.onThinking) {
+      input.onThinking(reasoningContent)
+    }
+
     let parsed: unknown
     try {
       parsed = JSON.parse(rawContent)

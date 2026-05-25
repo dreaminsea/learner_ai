@@ -2,29 +2,21 @@ import { ipcMain } from 'electron'
 import { generateLecture } from '../ai/agents/lecturerAgent'
 import { saveLecture, getLecture } from '../persistence/repositories/lectureRepository'
 
-// Track in-progress generations to avoid duplicates and support parallel runs
 const pendingGenerations = new Map<string, Promise<unknown>>()
 
 export function registerLectureIpcHandlers(): void {
   ipcMain.handle('lecture:get', async (_event, taskId: string) => {
-    const lecture = await getLecture(taskId)
-    return lecture
+    return await getLecture(taskId)
   })
 
-  /**
-   * Kick off background lecture generation.
-   * Returns immediately with { status: 'generating' }.
-   * Pushes 'lecture:generated' event when complete.
-   * If already generating for this task, returns { status: 'already_generating' }.
-   */
   ipcMain.handle('lecture:generate', async (event, taskId: string) => {
-    // Deduplicate: if already generating, don't start again
     if (pendingGenerations.has(taskId)) {
       return { status: 'already_generating', taskId }
     }
 
-    // Kick off background generation
-    const promise = generateAndSave(taskId)
+    const promise = generateAndSave(taskId, (thinking: string) => {
+      event.sender.send('lecture:genThinking', { taskId, content: thinking })
+    })
       .then((lecture) => {
         pendingGenerations.delete(taskId)
         event.sender.send('lecture:generated', {
@@ -43,19 +35,15 @@ export function registerLectureIpcHandlers(): void {
       })
 
     pendingGenerations.set(taskId, promise)
-
     return { status: 'generating', taskId }
   })
 
-  /**
-   * Check which tasks are currently being generated
-   */
   ipcMain.handle('lecture:pending', async () => {
     return Array.from(pendingGenerations.keys())
   })
 }
 
-async function generateAndSave(taskId: string) {
-  const lecture = await generateLecture(taskId)
+async function generateAndSave(taskId: string, onThinking: (c: string) => void) {
+  const lecture = await generateLecture(taskId, { onThinking })
   return await saveLecture(lecture)
 }
