@@ -32,7 +32,6 @@ export type LearnerAIAPI = {
   assessment: {
     get: (taskId: string) => Promise<unknown>
     generate: (taskId: string) => Promise<unknown>
-    submit: (input: { assessmentId: string; taskId: string; answers: unknown[] }) => Promise<unknown>
   }
   graph: {
     get: (subject?: string) => Promise<unknown>
@@ -101,8 +100,7 @@ const api: LearnerAIAPI = {
   },
   assessment: {
     get: (taskId) => ipcRenderer.invoke('assessment:get', taskId),
-    generate: (taskId) => ipcRenderer.invoke('assessment:generate', taskId),
-    submit: (input) => ipcRenderer.invoke('assessment:submit', input)
+    generate: (taskId) => ipcRenderer.invoke('assessment:generate', taskId)
   },
   graph: {
     get: (subject) => ipcRenderer.invoke('graph:get', subject),
