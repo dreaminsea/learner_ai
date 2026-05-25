@@ -12,6 +12,12 @@ import { registerGraphIpcHandlers } from './ipc/graph.ipc'
 
 const ALLOWED_URL_SCHEMES = ['https:', 'http:']
 
+async function prepareDatabase(): Promise<void> {
+  await initDb()
+  await runMigrations()
+  console.log('[app] Database ready at:', getDbPath())
+}
+
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
     width: 1200,
@@ -74,9 +80,7 @@ function registerIpcHandlers(): void {
 
 app.whenReady().then(async () => {
   try {
-    await initDb()
-    await runMigrations()
-    console.log('[app] Database ready at:', getDbPath())
+    await prepareDatabase()
   } catch (err) {
     console.error('[app] Database init failed:', err)
   }
@@ -84,16 +88,25 @@ app.whenReady().then(async () => {
   registerIpcHandlers()
   createWindow()
 
-  app.on('activate', () => {
+  app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
+      try {
+        await prepareDatabase()
+      } catch (err) {
+        console.error('[app] Database init failed:', err)
+      }
       createWindow()
     }
   })
 })
 
 app.on('window-all-closed', () => {
-  closeDb()
   if (process.platform !== 'darwin') {
+    closeDb()
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  closeDb()
 })
