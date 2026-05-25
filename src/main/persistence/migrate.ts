@@ -1,4 +1,4 @@
-import { getDb, closeDb } from './database'
+import { initDb, closeDb, getDb } from './database'
 
 const ALL_TABLES = [
   `CREATE TABLE IF NOT EXISTS plans (
@@ -84,7 +84,7 @@ const ALL_TABLES = [
   )`
 ]
 
-export function runMigrations(): void {
+export async function runMigrations(): Promise<void> {
   const db = getDb()
   db.run(
     `CREATE TABLE IF NOT EXISTS __drizzle_migrations (
@@ -99,11 +99,14 @@ export function runMigrations(): void {
   console.log('[db] All tables ready')
 }
 
-// Allow running as standalone script via `npm run db:migrate`
+// Standalone execution for npm run db:migrate
 const isDirectExecution = process.argv[1]?.includes('migrate')
 
 if (isDirectExecution) {
-  runMigrations()
-  closeDb()
-  console.log('[db] Migration complete')
+  initDb().then(() => {
+    runMigrations().then(() => {
+      closeDb()
+      console.log('[db] Migration complete')
+    })
+  })
 }

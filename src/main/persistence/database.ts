@@ -1,42 +1,83 @@
-import Database from 'better-sqlite3'
-import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import initSqlJs, { type Database as SqlJsDatabase, type SqlJsStatic } from 'sql.js'
+import { drizzle, type SQLJsDatabase } from 'drizzle-orm/sql-js'
 import { app } from 'electron'
 import { join } from 'path'
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import * as schema from './schema'
 
-let dbInstance: BetterSQLite3Database<typeof schema> | null = null
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let rawDb: any = null
+let drizzleDb: SQLJsDatabase<typeof schema> | null = null
+let sqlJs: SqlJsStatic | null = null
+let sqliteDb: SqlJsDatabase | null = null
 
 export function getDbPath(): string {
   try {
     const userData = app.getPath('userData')
     return join(userData, 'learner_ai.db')
   } catch {
-    // Fallback for standalone scripts (npm run db:migrate)
     return join(process.cwd(), 'dev.db')
   }
 }
 
-export function getDb(): BetterSQLite3Database<typeof schema> {
-  if (dbInstance) return dbInstance
+function loadOrCreateDb(path: string): SqlJsDatabase {
+  if (existsSync(path)) {
+    const buffer = readFileSync(path)
+    return new sqlJs!.Database(buffer)
+  }
+  return new sqlJs!.Database()
+}
 
+function persistDb(): void {
+  if (!sqliteDb) return
+  const data = sqliteDb.export()
+  const buffer = Buffer.from(data)
+  const path = getDbPath()
+
+  const dir = join(path, '..')
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true })
+  }
+  writeFileSync(path, buffer)
+}
+
+export async function initDb(): Promise<SQLJsDatabase<typeof schema>> {
+  if (drizzleDb) return drizzleDb
+
+  sqlJs = await initSqlJs()
   const dbPath = getDbPath()
-  rawDb = new Database(dbPath)
+  sqliteDb = loadOrCreateDb(dbPath)
 
-  rawDb.pragma('journal_mode = WAL')
-  rawDb.pragma('foreign_keys = ON')
+  // Auto-persist after every write so data survives crashes
+  const origRun = sqliteDb.run.bind(sqliteDb)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sqliteDb.run = function (sql: string, params?: any) {
+    const result = origRun(sql, params)
+    if (typeof sql === 'string' && /^(CREATE|INSERT|UPDATE|DELETE|DROP|ALTER)/i.test(sql.trim())) {
+      setImmediate(persistDb)
+    }
+    return result
+  }
 
-  dbInstance = drizzle(rawDb, { schema })
-  return dbInstance
+  drizzleDb = drizzle(sqliteDb, { schema })
+
+  console.log('[db] Database ready at:', dbPath)
+  return drizzleDb
+}
+
+export function getDb(): SQLJsDatabase<typeof schema> {
+  if (!drizzleDb) {
+    throw new Error('Database not initialized. Call initDb() first.')
+  }
+  return drizzleDb
 }
 
 export function closeDb(): void {
-  if (rawDb) {
-    rawDb.close()
-    rawDb = null
+  if (sqliteDb) {
+    persistDb()
+    sqliteDb.close()
+    sqliteDb = null
   }
-  dbInstance = null
+  drizzleDb = null
+  sqlJs = null
 }
 
 export { schema }

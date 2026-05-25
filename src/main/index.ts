@@ -1,9 +1,10 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
-import { getDbPath, closeDb } from './persistence/database'
+import { getDbPath, initDb, closeDb } from './persistence/database'
 import { runMigrations } from './persistence/migrate'
 import { getSettings, setSettings } from './persistence/repositories/settingsRepository'
+import { registerPlanIpcHandlers } from './ipc/plan.ipc'
 
 const ALLOWED_URL_SCHEMES = ['https:', 'http:']
 
@@ -59,18 +60,20 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('app:getDbPath', () => getDbPath())
+
+  registerPlanIpcHandlers()
 }
 
-app.whenReady().then(() => {
-  registerIpcHandlers()
-
+app.whenReady().then(async () => {
   try {
-    runMigrations()
+    await initDb()
+    await runMigrations()
     console.log('[app] Database ready at:', getDbPath())
   } catch (err) {
     console.error('[app] Database init failed:', err)
   }
 
+  registerIpcHandlers()
   createWindow()
 
   app.on('activate', () => {

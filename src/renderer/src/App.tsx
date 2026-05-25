@@ -6,6 +6,7 @@ import LecturePage from './pages/LecturePage'
 import KnowledgeGraphPage from './pages/KnowledgeGraphPage'
 import ChatPage from './pages/ChatPage'
 import SettingsPage from './pages/SettingsPage'
+import PlanCreatePage from './pages/PlanCreatePage'
 
 export default function App() {
   return (
@@ -16,6 +17,8 @@ export default function App() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/plan" element={<PlanPage />} />
+            <Route path="/plan/create" element={<PlanCreatePage />} />
+            <Route path="/plan/:id" element={<LecturePage />} />
             <Route path="/lecture" element={<LecturePage />} />
             <Route path="/graph" element={<KnowledgeGraphPage />} />
             <Route path="/chat" element={<ChatPage />} />

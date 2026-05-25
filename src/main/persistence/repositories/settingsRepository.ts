@@ -5,7 +5,7 @@ import type { AppSettings } from '@shared/types'
 
 const DEFAULT_SETTINGS: AppSettings = {
   deepseekApiKey: '',
-  model: 'deepseek-chat',
+  model: 'deepseek-v4-pro',
   dailyMinutes: 60,
   reminderTime: '09:00'
 }
