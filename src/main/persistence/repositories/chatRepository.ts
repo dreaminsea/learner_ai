@@ -76,6 +76,14 @@ export async function addMessage(message: ChatMessage): Promise<void> {
     .run()
 }
 
+export async function renameSession(id: string, title: string): Promise<void> {
+  const db = getDb()
+  db.update(chatSessions)
+    .set({ title, updatedAt: new Date().toISOString() })
+    .where(eq(chatSessions.id, id))
+    .run()
+}
+
 export async function listSessions(): Promise<ChatSession[]> {
   const db = getDb()
   const rows = db.select().from(chatSessions)

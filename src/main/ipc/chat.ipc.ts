@@ -5,7 +5,8 @@ import {
   createSession,
   getSession,
   listSessions,
-  addMessage
+  addMessage,
+  renameSession
 } from '../persistence/repositories/chatRepository'
 import type { ChatSession, ChatMessage as DBChatMessage } from '@shared/types'
 import type { ChatMessage as LLMChatMessage } from '../ai/llmClient'
@@ -77,6 +78,15 @@ export function registerChatIpcHandlers(): void {
       })
     }
 
+    // Auto-rename new sessions based on conversation content
+    const sessionForRename = await getSession(sessionId)
+    if (sessionForRename && sessionForRename.messages.length <= 3 && sessionForRename.title === input.message.slice(0, 50)) {
+      const autoTitle = generateTitle(turn, input.message)
+      if (autoTitle) {
+        await renameSession(sessionId, autoTitle)
+      }
+    }
+
     persistDb()
 
     return {
@@ -115,4 +125,30 @@ export function registerChatIpcHandlers(): void {
     await createSession(session)
     return session
   })
+
+  ipcMain.handle('chat:rename', async (_event, input: { sessionId: string; title: string }) => {
+    await renameSession(input.sessionId, input.title)
+    persistDb()
+  })
+}
+
+function generateTitle(turn: ChatTurn, userMessage: string): string | null {
+  // If a plan was created, use the plan title
+  if (turn.planCreated?.title) {
+    return turn.planCreated.title
+  }
+
+  // Otherwise, extract a title from the AI's response
+  for (const msg of turn.messages) {
+    if (msg.role === 'assistant' && msg.content) {
+      // Take first meaningful line
+      const line = msg.content.split('\n')[0].replace(/^[#*>\s]+/, '').trim()
+      if (line.length > 5) {
+        return line.slice(0, 50) + (line.length > 50 ? '…' : '')
+      }
+    }
+  }
+
+  // Fallback: use user message
+  return userMessage.slice(0, 50)
 }

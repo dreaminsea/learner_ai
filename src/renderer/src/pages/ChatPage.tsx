@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/ui/button'
-import { Plus, Send, Wrench, FileText, ChevronDown, ChevronRight, Brain, Loader2 } from 'lucide-react'
+import { Plus, Send, Wrench, FileText, ChevronDown, ChevronRight, Brain, Loader2, Pencil, Check, X } from 'lucide-react'
 
 interface ToolCall {
   id: string
@@ -136,9 +136,11 @@ export default function ChatPage() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [tick, setTick] = useState(0)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [renameTitle, setRenameTitle] = useState('')
   const messagesEnd = useRef<HTMLDivElement>(null)
   const activeSessionRef = useRef<string | null>(null)
-  const sendingSessionRef = useRef<string | null>(null)
+  const renameInputRef = useRef<HTMLInputElement>(null)
 
   // Keep activeSessionRef in sync
   useEffect(() => { activeSessionRef.current = activeSessionId }, [activeSessionId])
@@ -174,6 +176,26 @@ export default function ChatPage() {
     await loadSessions()
   }
 
+  function startRename(sessionId: string, currentTitle: string): void {
+    setRenaming(sessionId)
+    setRenameTitle(currentTitle)
+    setTimeout(() => renameInputRef.current?.focus(), 50)
+  }
+
+  async function finishRename(): Promise<void> {
+    if (renaming && renameTitle.trim()) {
+      await window.learnerAI.chat.rename(renaming, renameTitle.trim())
+      await loadSessions()
+    }
+    setRenaming(null)
+    setRenameTitle('')
+  }
+
+  function cancelRename(): void {
+    setRenaming(null)
+    setRenameTitle('')
+  }
+
   async function handleSend(): Promise<void> {
     const text = input.trim()
     if (!text || sending) return
@@ -194,12 +216,11 @@ export default function ChatPage() {
         planCreated?: { id: string; title: string }
       }
 
-      sendingSessionRef.current = null
-
       if (!activeSessionId) {
         setActiveSessionId(response.sessionId)
-        await loadSessions()
       }
+      // Reload sessions to pick up auto-renamed title
+      await loadSessions()
 
       // Read final streaming state from module-level map
       const finalStreaming = streamSessions.get(response.sessionId)
@@ -243,7 +264,6 @@ export default function ChatPage() {
   }
 
   const hasContent = messages.filter((m) => m.role !== 'system').length > 0 || streaming
-  const isStreamingSession = sending && activeSessionId != null
 
   return (
     <div className="flex h-full">
@@ -256,17 +276,42 @@ export default function ChatPage() {
         <div className="flex-1 overflow-auto p-2">
           {sessions.length === 0 && <p className="px-2 py-4 text-xs text-muted-foreground text-center">暂无对话记录</p>}
           {sessions.map((s) => (
-            <button
+            <div
               key={s.id}
-              className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${s.id === activeSessionId ? 'bg-primary/10 text-primary' : 'hover:bg-accent'}`}
-              onClick={() => selectSession(s.id)}
+              className={`group relative w-full rounded-md text-left text-sm transition-colors ${s.id === activeSessionId ? 'bg-primary/10 text-primary' : 'hover:bg-accent'}`}
             >
-              <div className="flex items-center gap-2">
-                <span className="truncate flex-1">{s.title}</span>
-                {streamSessions.has(s.id) && <Loader2 className="h-3 w-3 animate-spin shrink-0" />}
-              </div>
-              <div className="text-xs text-muted-foreground">{new Date(s.updatedAt).toLocaleDateString('zh-CN')}</div>
-            </button>
+              {renaming === s.id ? (
+                <div className="flex items-center gap-1 px-3 py-2">
+                  <input
+                    ref={renameInputRef}
+                    className="flex-1 rounded border px-1.5 py-0.5 text-xs"
+                    value={renameTitle}
+                    onChange={(e) => setRenameTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') finishRename()
+                      if (e.key === 'Escape') cancelRename()
+                    }}
+                    onBlur={finishRename}
+                  />
+                  <button className="p-0.5 text-muted-foreground hover:text-foreground" onMouseDown={(e) => e.preventDefault()} onClick={finishRename}><Check className="h-3 w-3" /></button>
+                  <button className="p-0.5 text-muted-foreground hover:text-foreground" onMouseDown={(e) => e.preventDefault()} onClick={cancelRename}><X className="h-3 w-3" /></button>
+                </div>
+              ) : (
+                <button className="w-full px-3 py-2 cursor-pointer" onClick={() => selectSession(s.id)}>
+                  <div className="flex items-center gap-2">
+                    <span className="truncate flex-1">{s.title}</span>
+                    {streamSessions.has(s.id) && <Loader2 className="h-3 w-3 animate-spin shrink-0" />}
+                    <button
+                      className="shrink-0 p-0.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => { e.stopPropagation(); startRename(s.id, s.title) }}
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <div className="text-xs text-muted-foreground">{new Date(s.updatedAt).toLocaleDateString('zh-CN')}</div>
+                </button>
+              )}
+            </div>
           ))}
         </div>
       </div>
