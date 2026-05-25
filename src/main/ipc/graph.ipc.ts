@@ -16,7 +16,9 @@ export function registerGraphIpcHandlers(): void {
       nodes = subject ? await listNodesBySubject(subject) : await listAllNodes()
     }
 
+    const nodeIds = new Set(nodes.map((n) => n.id))
     const allEdges = await listAllEdges()
+    const filteredEdges = allEdges.filter((e) => nodeIds.has(e.fromNodeId) && nodeIds.has(e.toNodeId))
 
     return {
       nodes: nodes.map((n) => ({
@@ -30,7 +32,7 @@ export function registerGraphIpcHandlers(): void {
           description: n.description
         }
       })),
-      edges: allEdges.map((e) => ({
+      edges: filteredEdges.map((e) => ({
         id: e.id,
         source: e.fromNodeId,
         target: e.toNodeId,

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { getDbPath, initDb, closeDb } from './persistence/database'
@@ -83,6 +83,9 @@ app.whenReady().then(async () => {
     await prepareDatabase()
   } catch (err) {
     console.error('[app] Database init failed:', err)
+    dialog.showErrorBox('Database Initialization Failed', `Failed to initialize the database:\n${(err as Error).message}`)
+    app.quit()
+    return
   }
 
   registerIpcHandlers()
@@ -94,6 +97,9 @@ app.whenReady().then(async () => {
         await prepareDatabase()
       } catch (err) {
         console.error('[app] Database init failed:', err)
+        dialog.showErrorBox('Database Initialization Failed', `Failed to initialize the database:\n${(err as Error).message}`)
+        app.quit()
+        return
       }
       createWindow()
     }

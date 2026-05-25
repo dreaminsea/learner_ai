@@ -42,7 +42,7 @@ export function registerPlanIpcHandlers(): void {
 
 async function initGraphFromPlan(plan: StudyPlan): Promise<void> {
   const now = new Date().toISOString()
-  const created: KnowledgeNode[] = []
+  const allNodes: KnowledgeNode[] = []
   const seen = new Set<string>()
 
   for (const stage of plan.stages) {
@@ -73,20 +73,20 @@ async function initGraphFromPlan(plan: StudyPlan): Promise<void> {
 
         try {
           await createNode(node)
-          created.push(node)
         } catch {
           // Node may already exist
         }
+        allNodes.push(node)
       }
     }
   }
 
   // Create prerequisite edges within each stage (sequential tasks → sequential knowledge)
-  for (let i = 1; i < created.length; i++) {
+  for (let i = 1; i < allNodes.length; i++) {
     const edge: KnowledgeEdge = {
-      id: `${created[i - 1].id}-${created[i].id}`,
-      fromNodeId: created[i - 1].id,
-      toNodeId: created[i].id,
+      id: `${allNodes[i - 1].id}-${allNodes[i].id}`,
+      fromNodeId: allNodes[i - 1].id,
+      toNodeId: allNodes[i].id,
       type: 'prerequisite',
       weight: 70,
       evidence: `学习计划「${plan.title}」中的学习顺序`,

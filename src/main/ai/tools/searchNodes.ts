@@ -1,5 +1,5 @@
 import type { ToolDefinition } from './types'
-import { listNodesBySubject } from '../../persistence/repositories/graphRepository'
+import { listAllNodes, listNodesBySubject } from '../../persistence/repositories/graphRepository'
 
 export const searchNodesTool: ToolDefinition = {
   name: 'search_knowledge_nodes',
@@ -21,9 +21,7 @@ export const searchNodesTool: ToolDefinition = {
     const subject = args['subject'] as string | undefined
     const keyword = (args['keyword'] as string)?.toLowerCase()
 
-    const nodes = subject ? await listNodesBySubject(subject) : []
-    // listNodesBySubject requires a subject; for full search, get all plans' subjects
-    // For now, a simple implementation
+    const nodes = subject ? await listNodesBySubject(subject) : await listAllNodes()
 
     let results = nodes
     if (keyword) {

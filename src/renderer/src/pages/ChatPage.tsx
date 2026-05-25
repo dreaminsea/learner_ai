@@ -207,17 +207,21 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMsg])
 
     try {
+      // Create session first so streaming state is visible during send
+      let sessionId = activeSessionId
+      if (!sessionId) {
+        const session = await window.learnerAI.chat.create() as ChatSession
+        sessionId = session.id
+        setActiveSessionId(sessionId)
+      }
+
       const response = await window.learnerAI.chat.send({
-        sessionId: activeSessionId ?? undefined,
+        sessionId,
         message: text
       }) as {
         sessionId: string
         messages: ChatMsg[]
         planCreated?: { id: string; title: string }
-      }
-
-      if (!activeSessionId) {
-        setActiveSessionId(response.sessionId)
       }
       // Reload sessions to pick up auto-renamed title
       await loadSessions()
