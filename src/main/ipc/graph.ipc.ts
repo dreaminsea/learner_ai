@@ -1,18 +1,28 @@
 import { ipcMain } from 'electron'
-import { getNode, listAllNodes, listAllEdges, listNodesBySubject, getEdgesForNode, createNode, createEdge } from '../persistence/repositories/graphRepository'
+import {
+  getNode, listAllNodes, listAllEdges, listNodesBySubject,
+  getEdgesForNode, createNode, createEdge
+} from '../persistence/repositories/graphRepository'
+import { listPlans } from '../persistence/repositories/planRepository'
 import type { KnowledgeNode, KnowledgeEdge } from '@shared/types'
 
 export function registerGraphIpcHandlers(): void {
-  // Return React Flow-compatible graph data
   ipcMain.handle('graph:get', async (_event, subject?: string) => {
-    const nodes = subject ? await listNodesBySubject(subject) : await listAllNodes()
+    let nodes = subject ? await listNodesBySubject(subject) : await listAllNodes()
+
+    // Auto-initialize from plans if graph is empty
+    if (nodes.length === 0) {
+      await autoInitFromPlans()
+      nodes = subject ? await listNodesBySubject(subject) : await listAllNodes()
+    }
+
     const allEdges = await listAllEdges()
 
     return {
       nodes: nodes.map((n) => ({
         id: n.id,
         type: 'knowledgeNode',
-        position: { x: 0, y: 0 }, // layout will be applied on frontend
+        position: { x: 0, y: 0 },
         data: {
           label: n.label,
           type: n.type,
@@ -35,41 +45,49 @@ export function registerGraphIpcHandlers(): void {
   ipcMain.handle('graph:getNodeDetail', async (_event, nodeId: string) => {
     const node = await getNode(nodeId)
     if (!node) return null
-
     const edges = await getEdgesForNode(nodeId)
-
     return {
       node,
       edges: edges.map((e) => ({
-        id: e.id,
-        fromNodeId: e.fromNodeId,
-        toNodeId: e.toNodeId,
-        type: e.type,
-        weight: e.weight
+        id: e.id, fromNodeId: e.fromNodeId, toNodeId: e.toNodeId,
+        type: e.type, weight: e.weight
       }))
     }
   })
+}
 
-  // Initialize nodes from plan tasks (called when plan is created)
-  ipcMain.handle('graph:initFromPlan', async (_event, plan: {
-    stages: Array<{ tasks?: Array<{ knowledgeNodeRefs?: Array<{ nodeId: string; label?: string }> }> }>
-  } & { subject: string }) => {
-    const now = new Date().toISOString()
-    const created: KnowledgeNode[] = []
-    const seen = new Set<string>()
+async function autoInitFromPlans(): Promise<void> {
+  const plans = await listPlans()
+  if (plans.length === 0) return
 
-    for (const stage of (plan.stages ?? [])) {
+  const now = new Date().toISOString()
+  const allNodes: KnowledgeNode[] = []
+  const seen = new Set<string>()
+
+  for (const plan of plans) {
+    const planNodes: string[] = []
+
+    for (const stage of plan.stages) {
       for (const task of (stage.tasks ?? [])) {
         for (const ref of (task.knowledgeNodeRefs ?? [])) {
-          if (seen.has(ref.nodeId)) continue
+          if (seen.has(ref.nodeId)) {
+            planNodes.push(ref.nodeId)
+            continue
+          }
           seen.add(ref.nodeId)
+          planNodes.push(ref.nodeId)
+
+          let nodeType: KnowledgeNode['type'] = 'concept'
+          if (task.type === 'practice') nodeType = 'method'
+          if (task.type === 'assessment') nodeType = 'problem_type'
+          if (task.type === 'project') nodeType = 'skill'
 
           const node: KnowledgeNode = {
             id: ref.nodeId,
-            label: ref.label ?? '未命名',
+            label: ref.label ?? '未命名知识点',
             subject: plan.subject,
-            type: 'concept',
-            description: '',
+            type: nodeType,
+            description: `来自学习计划「${plan.title}」`,
             mastery: 0,
             confidence: 50,
             sourceIds: [],
@@ -80,32 +98,32 @@ export function registerGraphIpcHandlers(): void {
 
           try {
             await createNode(node)
-            created.push(node)
+            allNodes.push(node)
           } catch {
-            // Node may already exist
+            // already exists
           }
         }
       }
     }
 
-    // Create edges between nodes in the same plan (prerequisite within same stage)
-    if (created.length > 1) {
-      for (let i = 0; i < created.length - 1; i++) {
-        await createEdge({
-          id: `${created[i].id}-${created[i + 1].id}`,
-          fromNodeId: created[i].id,
-          toNodeId: created[i + 1].id,
-          type: 'related',
-          weight: 50,
-          evidence: '同一学习计划中的连续知识点',
-          createdAt: now,
-          metadata: {}
-        }).catch(() => { /* edge may exist */ })
+    // Edges within this plan
+    if (planNodes.length > 0) {
+      for (let i = 1; i < planNodes.length; i++) {
+        try {
+          await createEdge({
+            id: `${planNodes[i - 1]}-${planNodes[i]}`,
+            fromNodeId: planNodes[i - 1],
+            toNodeId: planNodes[i],
+            type: 'prerequisite',
+            weight: 70,
+            evidence: `学习计划「${plan.title}」中的学习顺序`,
+            createdAt: now,
+            metadata: {}
+          })
+        } catch { /* exists */ }
       }
     }
-
-    return created
-  })
+  }
 }
 
 function edgeColor(type: string): string {
