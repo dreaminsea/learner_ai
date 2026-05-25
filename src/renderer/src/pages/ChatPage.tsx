@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/ui/button'
-import { Plus, Send, Wrench, FileText, ChevronDown, ChevronRight, Brain } from 'lucide-react'
+import { Plus, Send, Wrench, FileText, ChevronDown, ChevronRight, Brain, Loader2 } from 'lucide-react'
 
 interface ToolCall {
   id: string
@@ -23,12 +23,6 @@ interface ChatSession {
   updatedAt: string
 }
 
-interface ChatResponse {
-  sessionId: string
-  messages: ChatMsg[]
-  planCreated?: { id: string; title: string }
-}
-
 interface StreamChunk {
   type: 'thinking' | 'text' | 'toolCall' | 'done'
   content?: string
@@ -46,60 +40,32 @@ function ToolCallBubble({ name, args }: { name: string; args: string }) {
   const [expanded, setExpanded] = useState(false)
   let parsed = args
   try { parsed = JSON.stringify(JSON.parse(args), null, 2) } catch { /* raw */ }
-
   return (
     <div className="my-1 rounded border border-blue-200 bg-blue-50 text-sm">
-      <button
-        className="flex w-full items-center gap-2 px-3 py-1.5 font-medium text-blue-700"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <Wrench className="h-3.5 w-3.5" />
-        调用工具: {name}
+      <button className="flex w-full items-center gap-2 px-3 py-1.5 font-medium text-blue-700" onClick={() => setExpanded(!expanded)}>
+        <Wrench className="h-3.5 w-3.5" />调用工具: {name}
         {expanded ? <ChevronDown className="ml-auto h-3.5 w-3.5" /> : <ChevronRight className="ml-auto h-3.5 w-3.5" />}
       </button>
-      {expanded && (
-        <pre className="max-h-32 overflow-auto border-t border-blue-200 px-3 py-2 text-xs whitespace-pre-wrap">{parsed}</pre>
-      )}
+      {expanded && <pre className="max-h-32 overflow-auto border-t border-blue-200 px-3 py-2 text-xs whitespace-pre-wrap">{parsed}</pre>}
     </div>
   )
 }
 
-function ThinkingBlock({ content, isStreaming }: { content: string; isStreaming: boolean }) {
+function ThinkingBlock({ content, live }: { content: string; live: boolean }) {
   const [expanded, setExpanded] = useState(true)
   if (!content) return null
-
   return (
     <div className="my-1 rounded border border-purple-200 bg-purple-50/50 text-sm">
-      <button
-        className="flex w-full items-center gap-2 px-3 py-1.5 font-medium text-purple-700"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <Brain className={`h-3.5 w-3.5 ${isStreaming ? 'animate-pulse' : ''}`} />
-        推理过程
-        {isStreaming && <span className="ml-1 inline-flex gap-0.5">
-          <span className="h-1 w-1 animate-bounce rounded-full bg-purple-500" style={{ animationDelay: '0ms' }} />
-          <span className="h-1 w-1 animate-bounce rounded-full bg-purple-500" style={{ animationDelay: '150ms' }} />
-          <span className="h-1 w-1 animate-bounce rounded-full bg-purple-500" style={{ animationDelay: '300ms' }} />
+      <button className="flex w-full items-center gap-2 px-3 py-1.5 font-medium text-purple-700" onClick={() => setExpanded(!expanded)}>
+        <Brain className={`h-3.5 w-3.5 ${live ? 'animate-pulse text-purple-500' : ''}`} />推理过程
+        {live && <span className="inline-flex items-center gap-0.5">
+          <span className="h-1.5 w-1.5 animate-[pulse_1s_ease-in-out_infinite] rounded-full bg-purple-400" />
+          <span className="h-1.5 w-1.5 animate-[pulse_1s_ease-in-out_0.2s_infinite] rounded-full bg-purple-400" />
+          <span className="h-1.5 w-1.5 animate-[pulse_1s_ease-in-out_0.4s_infinite] rounded-full bg-purple-400" />
         </span>}
         {expanded ? <ChevronDown className="ml-auto h-3.5 w-3.5" /> : <ChevronRight className="ml-auto h-3.5 w-3.5" />}
       </button>
-      {expanded && (
-        <pre className="max-h-48 overflow-auto border-t border-purple-200 px-3 py-2 text-xs text-purple-800 whitespace-pre-wrap">{content}</pre>
-      )}
-    </div>
-  )
-}
-
-function TypingIndicator() {
-  return (
-    <div className="flex justify-start">
-      <div className="max-w-[75%] rounded-lg bg-muted px-4 py-3">
-        <span className="inline-flex gap-1">
-          <span className="h-2 w-2 animate-bounce rounded-full bg-foreground/40" style={{ animationDelay: '0ms' }} />
-          <span className="h-2 w-2 animate-bounce rounded-full bg-foreground/40" style={{ animationDelay: '150ms' }} />
-          <span className="h-2 w-2 animate-bounce rounded-full bg-foreground/40" style={{ animationDelay: '300ms' }} />
-        </span>
-      </div>
+      {expanded && <pre className="max-h-48 overflow-auto border-t border-purple-200 px-3 py-2 text-xs text-purple-800 whitespace-pre-wrap">{content}{live && <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-purple-500 align-text-bottom" />}</pre>}
     </div>
   )
 }
@@ -108,17 +74,15 @@ function MessageBubble({ msg }: { msg: ChatMsg }) {
   if (msg.role === 'tool') {
     return (
       <div className="my-1 rounded border border-muted bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
-        <span className="font-medium">工具结果:</span>{' '}
-        {msg.content && msg.content.length > 200 ? msg.content.slice(0, 200) + '...' : msg.content}
+        <span className="font-medium">工具结果:</span> {msg.content && msg.content.length > 200 ? msg.content.slice(0, 200) + '...' : msg.content}
       </div>
     )
   }
-
   const isUser = msg.role === 'user'
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div className={`max-w-[75%] rounded-lg px-4 py-2.5 text-sm whitespace-pre-wrap ${isUser ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-        {msg.thinking && <ThinkingBlock content={msg.thinking} isStreaming={false} />}
+        {msg.thinking && <ThinkingBlock content={msg.thinking} live={false} />}
         {msg.toolCalls?.map((tc) => <ToolCallBubble key={tc.id} name={tc.name} args={tc.arguments} />)}
         {msg.content && <div className={msg.thinking || msg.toolCalls?.length ? 'mt-2' : ''}>{msg.content}</div>}
       </div>
@@ -135,39 +99,43 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false)
   const [streaming, setStreaming] = useState<StreamingState | null>(null)
   const messagesEnd = useRef<HTMLDivElement>(null)
-  const unlistenRef = useRef<(() => void) | null>(null)
+  const streamingRef = useRef<StreamingState | null>(null)
+  const activeSessionRef = useRef<string | null>(null)
+  const sendingRef = useRef(false)
+
+  // Keep refs in sync so the stream listener always knows the active session
+  useEffect(() => { activeSessionRef.current = activeSessionId }, [activeSessionId])
+  useEffect(() => { sendingRef.current = sending }, [sending])
 
   useEffect(() => { loadSessions() }, [])
   useEffect(() => { messagesEnd.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, streaming])
 
-  // Register streaming listener
+  // Streaming listener — only update UI if viewing the matching session
   useEffect(() => {
     const unlisten = window.learnerAI.chat.onStreamChunk((chunk: unknown) => {
       const c = chunk as StreamChunk
+      if (c.type === 'done') return
+
       setStreaming((prev) => {
         const s = prev ?? { thinking: '', content: '', toolCalls: [] }
+        let next: StreamingState
         switch (c.type) {
           case 'thinking':
-            return { ...s, thinking: s.thinking + (c.content ?? '') }
+            next = { ...s, thinking: s.thinking + (c.content ?? '') }
+            break
           case 'text':
-            return { ...s, content: s.content + (c.content ?? '') }
+            next = { ...s, content: s.content + (c.content ?? '') }
+            break
           case 'toolCall':
-            return {
-              ...s,
-              toolCalls: [...s.toolCalls, {
-                id: crypto.randomUUID(),
-                name: c.toolName ?? 'unknown',
-                arguments: c.toolArgs ?? '{}'
-              }]
-            }
-          case 'done':
-            return null
+            next = { ...s, toolCalls: [...s.toolCalls, { id: crypto.randomUUID(), name: c.toolName ?? 'unknown', arguments: c.toolArgs ?? '{}' }] }
+            break
           default:
-            return s
+            next = s
         }
+        streamingRef.current = next
+        return next
       })
     })
-    unlistenRef.current = unlisten
     return () => { unlisten() }
   }, [])
 
@@ -177,6 +145,11 @@ export default function ChatPage() {
   }
 
   async function selectSession(sessionId: string): Promise<void> {
+    // If we're sending but switching to a different session, keep the send running in background
+    if (activeSessionRef.current !== sessionId) {
+      setStreaming(null)
+      streamingRef.current = null
+    }
     setActiveSessionId(sessionId)
     const data = await window.learnerAI.chat.get(sessionId) as { messages: ChatMsg[] }
     setMessages(data.messages ?? [])
@@ -186,6 +159,8 @@ export default function ChatPage() {
     const session = await window.learnerAI.chat.create() as ChatSession
     setActiveSessionId(session.id)
     setMessages([])
+    setStreaming(null)
+    streamingRef.current = null
     await loadSessions()
   }
 
@@ -195,6 +170,7 @@ export default function ChatPage() {
 
     setInput('')
     setSending(true)
+    setStreaming({ thinking: '', content: '', toolCalls: [] })
 
     const userMsg: ChatMsg = { role: 'user', content: text }
     setMessages((prev) => [...prev, userMsg])
@@ -203,39 +179,44 @@ export default function ChatPage() {
       const response = await window.learnerAI.chat.send({
         sessionId: activeSessionId ?? undefined,
         message: text
-      }) as ChatResponse
+      }) as {
+        sessionId: string
+        messages: ChatMsg[]
+        planCreated?: { id: string; title: string }
+      }
 
+      // Only update sessionId if this is still the relevant context
       if (!activeSessionId) {
         setActiveSessionId(response.sessionId)
         await loadSessions()
       }
 
-      // Get the final streaming msg if any, or use response messages
-      // The streaming state was cleared by the 'done' chunk — we need to reconstruct
-      setStreaming((lastStreaming) => {
-        const finalMsgs: ChatMsg[] = response.messages.filter((m) => m.role !== 'user')
-
-        // If we had streaming content, use it for the last assistant message
-        if (lastStreaming) {
-          setMessages((prev) => [...prev, {
-            role: 'assistant' as const,
-            content: lastStreaming.content || null,
-            thinking: lastStreaming.thinking || undefined,
-            toolCalls: lastStreaming.toolCalls.length > 0 ? lastStreaming.toolCalls : undefined
-          }])
-        } else {
-          setMessages((prev) => [...prev, ...finalMsgs])
-        }
-        return null
-      })
-
-      if (response.planCreated) {
+      // Capture streaming state via ref, finalize message
+      const finalStreaming = streamingRef.current
+      if (finalStreaming && (finalStreaming.content || finalStreaming.thinking || finalStreaming.toolCalls.length > 0)) {
         setMessages((prev) => [...prev, {
           role: 'assistant' as const,
-          content: `学习计划「${response.planCreated!.title}」已生成！[查看计划](#/plan/${response.planCreated!.id})`
+          content: finalStreaming.content || null,
+          thinking: finalStreaming.thinking || undefined,
+          toolCalls: finalStreaming.toolCalls.length > 0 ? finalStreaming.toolCalls : undefined
+        }])
+      } else if (response.messages.length > 0) {
+        setMessages((prev) => [...prev, ...response.messages.filter((m) => m.role !== 'user')])
+      }
+
+      setStreaming(null)
+      streamingRef.current = null
+
+      if (response.planCreated) {
+        const pc = response.planCreated
+        setMessages((prev) => [...prev, {
+          role: 'assistant' as const,
+          content: `学习计划「${pc.title}」已生成！[查看计划](#/plan/${pc.id})`
         }])
       }
     } catch (err) {
+      setStreaming(null)
+      streamingRef.current = null
       setMessages((prev) => [...prev, { role: 'assistant', content: `错误: ${(err as Error).message}` }])
     } finally {
       setSending(false)
@@ -249,6 +230,8 @@ export default function ChatPage() {
     }
   }
 
+  const hasContent = messages.filter((m) => m.role !== 'system').length > 0 || streaming
+
   return (
     <div className="flex h-full">
       {/* Session list sidebar */}
@@ -259,16 +242,17 @@ export default function ChatPage() {
           </Button>
         </div>
         <div className="flex-1 overflow-auto p-2">
-          {sessions.length === 0 && (
-            <p className="px-2 py-4 text-xs text-muted-foreground text-center">暂无对话记录</p>
-          )}
+          {sessions.length === 0 && <p className="px-2 py-4 text-xs text-muted-foreground text-center">暂无对话记录</p>}
           {sessions.map((s) => (
             <button
               key={s.id}
               className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${s.id === activeSessionId ? 'bg-primary/10 text-primary' : 'hover:bg-accent'}`}
               onClick={() => selectSession(s.id)}
             >
-              <div className="truncate">{s.title}</div>
+              <div className="flex items-center gap-2">
+                <span className="truncate flex-1">{s.title}</span>
+                {sending && s.id === activeSessionId && <Loader2 className="h-3 w-3 animate-spin shrink-0" />}
+              </div>
               <div className="text-xs text-muted-foreground">{new Date(s.updatedAt).toLocaleDateString('zh-CN')}</div>
             </button>
           ))}
@@ -278,7 +262,7 @@ export default function ChatPage() {
       {/* Chat area */}
       <div className="flex flex-1 flex-col">
         <div className="flex-1 overflow-auto p-4">
-          {messages.length === 0 && !streaming ? (
+          {!hasContent ? (
             <div className="flex h-full items-center justify-center">
               <div className="text-center space-y-2">
                 <FileText className="mx-auto h-8 w-8 text-muted-foreground" />
@@ -292,20 +276,20 @@ export default function ChatPage() {
                 <MessageBubble key={i} msg={msg} />
               ))}
 
-              {/* Streaming message */}
               {streaming && (
                 <div className="flex justify-start">
                   <div className="max-w-[75%] rounded-lg bg-muted px-4 py-2.5 text-sm">
-                    {streaming.thinking && <ThinkingBlock content={streaming.thinking} isStreaming={streaming.content === ''} />}
-                    {streaming.toolCalls.map((tc) => (
-                      <ToolCallBubble key={tc.id} name={tc.name} args={tc.arguments} />
-                    ))}
-                    {streaming.content ? (
-                      <div className="whitespace-pre-wrap">{streaming.content}</div>
-                    ) : (
-                      !streaming.toolCalls.length && !streaming.thinking && <TypingIndicator />
+                    {streaming.thinking && <ThinkingBlock content={streaming.thinking} live={streaming.content === ''} />}
+                    {streaming.toolCalls.map((tc) => <ToolCallBubble key={tc.id} name={tc.name} args={tc.arguments} />)}
+                    {streaming.content && (
+                      <div className="whitespace-pre-wrap">{streaming.content}<span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-foreground/60 align-text-bottom" /></div>
                     )}
-                    {streaming.thinking && streaming.content === '' && <TypingIndicator />}
+                    {!streaming.content && !streaming.thinking && streaming.toolCalls.length === 0 && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="text-xs">AI 正在思考…</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -314,7 +298,6 @@ export default function ChatPage() {
           )}
         </div>
 
-        {/* Input */}
         <div className="border-t p-4">
           <div className="mx-auto flex max-w-2xl gap-2">
             <textarea
