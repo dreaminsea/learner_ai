@@ -14,7 +14,21 @@ export type LearnerAIAPI = {
     get: (id: string) => Promise<unknown>
     updateTaskStatus: (taskId: string, status: string) => Promise<void>
   }
+  chat: {
+    send: (input: { sessionId?: string; message: string }) => Promise<unknown>
+    list: () => Promise<unknown>
+    get: (sessionId: string) => Promise<unknown>
+    create: () => Promise<unknown>
+    onStreamChunk: (callback: (chunk: unknown) => void) => () => void
+  }
 }
+
+type StreamCallback = (chunk: unknown) => void
+const streamCallbacks = new Set<StreamCallback>()
+
+ipcRenderer.on('chat:streamChunk', (_event, chunk: unknown) => {
+  streamCallbacks.forEach((cb) => cb(chunk))
+})
 
 const api: LearnerAIAPI = {
   app: {
@@ -30,6 +44,16 @@ const api: LearnerAIAPI = {
     get: (id) => ipcRenderer.invoke('plan:get', id),
     updateTaskStatus: (taskId, status) =>
       ipcRenderer.invoke('plan:updateTaskStatus', { taskId, status })
+  },
+  chat: {
+    send: (input) => ipcRenderer.invoke('chat:send', input),
+    list: () => ipcRenderer.invoke('chat:list'),
+    get: (sessionId) => ipcRenderer.invoke('chat:get', sessionId),
+    create: () => ipcRenderer.invoke('chat:create'),
+    onStreamChunk: (callback: StreamCallback) => {
+      streamCallbacks.add(callback)
+      return () => { streamCallbacks.delete(callback) }
+    }
   }
 }
 

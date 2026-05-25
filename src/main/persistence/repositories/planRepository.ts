@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm'
-import { getDb } from '../database'
+import { getDb, persistDb } from '../database'
 import { plans, planStages, planTasks } from '../schema'
 import type { StudyPlan, PlanStage, PlanTask, TaskStatus } from '@shared/types'
 
@@ -51,6 +51,7 @@ export async function createPlan(plan: StudyPlan): Promise<StudyPlan> {
     }
   })
 
+  persistDb()
   return plan
 }
 

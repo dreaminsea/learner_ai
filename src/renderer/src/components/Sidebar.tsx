@@ -11,11 +11,11 @@ import { cn } from '../lib/utils'
 import { ROUTES } from '@shared/constants'
 
 const navItems = [
+  { to: ROUTES.CHAT, label: 'AI 对话', icon: MessageCircle },
   { to: ROUTES.DASHBOARD, label: 'Dashboard', icon: LayoutDashboard },
   { to: ROUTES.PLAN, label: '学习计划', icon: BookOpen },
   { to: ROUTES.LECTURE, label: '讲义', icon: GraduationCap },
   { to: ROUTES.GRAPH, label: '知识网络', icon: GitGraph },
-  { to: ROUTES.CHAT, label: 'AI 对话', icon: MessageCircle },
   { to: ROUTES.SETTINGS, label: '设置', icon: Settings }
 ]
 

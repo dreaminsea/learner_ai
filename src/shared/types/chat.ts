@@ -1,6 +1,6 @@
 import type { KnowledgeGraphPatch } from './graph'
 
-export type ChatRole = 'user' | 'assistant' | 'system'
+export type ChatRole = 'user' | 'assistant' | 'system' | 'tool'
 export type ChatContextType = 'plan' | 'task' | 'node' | 'lecture' | 'general'
 
 export interface ChatContext {

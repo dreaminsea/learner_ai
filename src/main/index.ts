@@ -5,6 +5,7 @@ import { getDbPath, initDb, closeDb } from './persistence/database'
 import { runMigrations } from './persistence/migrate'
 import { getSettings, setSettings } from './persistence/repositories/settingsRepository'
 import { registerPlanIpcHandlers } from './ipc/plan.ipc'
+import { registerChatIpcHandlers } from './ipc/chat.ipc'
 
 const ALLOWED_URL_SCHEMES = ['https:', 'http:']
 
@@ -62,6 +63,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle('app:getDbPath', () => getDbPath())
 
   registerPlanIpcHandlers()
+  registerChatIpcHandlers()
 }
 
 app.whenReady().then(async () => {

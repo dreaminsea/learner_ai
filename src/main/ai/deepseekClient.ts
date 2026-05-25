@@ -1,7 +1,8 @@
 import OpenAI from 'openai'
 import type { ZodError } from 'zod'
 import { getSettings } from '../persistence/repositories/settingsRepository'
-import type { LLMClient, LLMGenerateInput, LLMGenerateResult } from './llmClient'
+import type { LLMClient, LLMGenerateInput, LLMGenerateResult, ChatMessage, ChatResult } from './llmClient'
+import type { ToolDefinition } from './tools/types'
 
 const BASE_URL = 'https://api.deepseek.com'
 const MODEL = 'deepseek-v4-pro'
@@ -19,6 +20,8 @@ export class DeepSeekClient implements LLMClient {
     })
   }
 
+  // ---- Structured generation (existing) ----
+
   async generateStructured<T>(input: LLMGenerateInput): Promise<LLMGenerateResult<T>> {
     let lastError = ''
 
@@ -30,7 +33,6 @@ export class DeepSeekClient implements LLMClient {
       } catch (err) {
         if (attempt === MAX_RETRIES) throw err
         const message = (err as Error).message
-        // Only retry on JSON/validation errors, not on auth/network errors
         if (!message.includes('parse') && !message.includes('validation') && !message.includes('schema')) {
           throw err
         }
@@ -56,6 +58,8 @@ export class DeepSeekClient implements LLMClient {
       temperature: input.temperature ?? 0.7,
       max_tokens: input.maxTokens ?? 8000,
       response_format: { type: 'json_object' },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      reasoning_effort: 'medium' as any,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: input.userPrompt }
@@ -69,13 +73,10 @@ export class DeepSeekClient implements LLMClient {
 
     const rawContent = choice.message.content
 
-    // Extract reasoning/CoT if present (deepseek-v4-pro reasoning_content)
-    // openai SDK types don't include this field, cast through unknown
     const reasoningContent = (
       choice.message as unknown as { reasoning_content?: string }
     ).reasoning_content
 
-    // Parse JSON from the response
     let parsed: unknown
     try {
       parsed = JSON.parse(rawContent)
@@ -83,7 +84,6 @@ export class DeepSeekClient implements LLMClient {
       throw new Error(`Failed to parse LLM response as JSON: ${rawContent.slice(0, 500)}`)
     }
 
-    // Validate against schema
     const result = input.responseSchema.safeParse(parsed)
     if (!result.success) {
       const zodError = result.error as ZodError
@@ -98,6 +98,191 @@ export class DeepSeekClient implements LLMClient {
         promptTokens: response.usage?.prompt_tokens ?? 0,
         completionTokens: response.usage?.completion_tokens ?? 0
       }
+    }
+  }
+
+  // ---- Chat with function calling ----
+
+  async chat(input: { messages: ChatMessage[]; tools?: ToolDefinition[] }): Promise<ChatResult> {
+    const client = this.getClient()
+
+    const openaiTools = input.tools?.map((t) => ({
+      type: 'function' as const,
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters as Record<string, unknown>
+      }
+    }))
+
+    const response = await client.chat.completions.create({
+      model: MODEL,
+      temperature: 0.7,
+      max_tokens: 8000,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      reasoning_effort: 'medium' as any,
+      messages: input.messages.map((m) => {
+        const base: Record<string, unknown> = {
+          role: m.role,
+          content: m.content ?? ''
+        }
+        // Must pass back reasoning_content for DeepSeek v4
+        if (m.reasoningContent) {
+          base['reasoning_content'] = m.reasoningContent
+        }
+        if (m.name) {
+          base['name'] = m.name
+        }
+        if (m.toolCalls) {
+          base['tool_calls'] = m.toolCalls.map((tc) => ({
+            id: tc.id,
+            type: 'function',
+            function: { name: tc.name, arguments: tc.arguments }
+          }))
+        }
+        if (m.toolCallId) {
+          base['tool_call_id'] = m.toolCallId
+        }
+        return base
+      }) as never,
+      tools: openaiTools,
+      tool_choice: input.tools?.length ? 'auto' : undefined
+    })
+
+    const choice = response.choices[0]
+    const msg = choice?.message
+
+    const reasoningContent = (msg as unknown as { reasoning_content?: string })?.reasoning_content
+
+    // Build ChatMessage from response
+    const message: ChatMessage = {
+      role: (msg?.role as ChatMessage['role']) ?? 'assistant',
+      content: msg?.content ?? null,
+      reasoningContent,
+      toolCalls: msg?.tool_calls?.map((tc) => {
+        const fn = (tc as { function?: { name: string; arguments: string } }).function
+        return {
+          id: tc.id,
+          name: fn?.name ?? 'unknown',
+          arguments: fn?.arguments ?? '{}'
+        }
+      })
+    }
+
+    return {
+      message,
+      reasoningContent,
+      usage: {
+        promptTokens: response.usage?.prompt_tokens ?? 0,
+        completionTokens: response.usage?.completion_tokens ?? 0
+      }
+    }
+  }
+
+  // ---- Streaming chat ----
+
+  async chatStream(
+    input: { messages: ChatMessage[]; tools?: ToolDefinition[] },
+    onChunk: (chunk: import('./llmClient').StreamChunk) => void
+  ): Promise<ChatResult> {
+    const client = this.getClient()
+
+    const openaiTools = input.tools?.map((t) => ({
+      type: 'function' as const,
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters as Record<string, unknown>
+      }
+    }))
+
+    const stream = await client.chat.completions.create({
+      model: MODEL,
+      temperature: 0.7,
+      max_tokens: 8000,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      reasoning_effort: 'medium' as any,
+      stream: true,
+      messages: input.messages.map((m) => {
+        const base: Record<string, unknown> = { role: m.role, content: m.content ?? '' }
+        if (m.reasoningContent) base['reasoning_content'] = m.reasoningContent
+        if (m.name) base['name'] = m.name
+        if (m.toolCalls) {
+          base['tool_calls'] = m.toolCalls.map((tc) => ({
+            id: tc.id, type: 'function',
+            function: { name: tc.name, arguments: tc.arguments }
+          }))
+        }
+        if (m.toolCallId) base['tool_call_id'] = m.toolCallId
+        return base
+      }) as never,
+      tools: openaiTools,
+      tool_choice: input.tools?.length ? 'auto' : undefined
+    })
+
+    let fullContent = ''
+    let fullReasoning = ''
+    const toolCallAccum: Map<number, { id: string; name: string; args: string }> = new Map()
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta
+      if (!delta) continue
+
+      // Reasoning (CoT) comes first
+      const reasoning = (delta as unknown as { reasoning_content?: string }).reasoning_content
+      if (reasoning) {
+        fullReasoning += reasoning
+        onChunk({ type: 'thinking', content: reasoning })
+      }
+
+      // Text content
+      if (delta.content) {
+        fullContent += delta.content
+        onChunk({ type: 'text', content: delta.content })
+      }
+
+      // Tool calls (accumulated across chunks)
+      if (delta.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          const idx = tc.index
+          const existing = toolCallAccum.get(idx) ?? { id: '', name: '', args: '' }
+          if (tc.id) existing.id = tc.id
+          if (tc.function?.name) existing.name += tc.function.name
+          if (tc.function?.arguments) existing.args += tc.function.arguments
+          toolCallAccum.set(idx, existing)
+        }
+      }
+
+      // Check finish reason
+      const finishReason = chunk.choices[0]?.finish_reason
+      if (finishReason === 'tool_calls') {
+        for (const [, tc] of toolCallAccum) {
+          onChunk({ type: 'toolCall', toolName: tc.name, toolArgs: tc.args })
+        }
+      }
+    }
+
+    // Build final ChatMessage
+    const accumulatedToolCalls = Array.from(toolCallAccum.values())
+    const message: ChatMessage = {
+      role: 'assistant',
+      content: fullContent || null,
+      reasoningContent: fullReasoning || undefined,
+      toolCalls: accumulatedToolCalls.length > 0
+        ? accumulatedToolCalls.map((tc) => ({
+            id: tc.id || '',
+            name: tc.name,
+            arguments: tc.args
+          }))
+        : undefined
+    }
+
+    onChunk({ type: 'done' })
+
+    return {
+      message,
+      reasoningContent: fullReasoning || undefined,
+      usage: { promptTokens: 0, completionTokens: 0 }
     }
   }
 

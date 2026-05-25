@@ -1,5 +1,4 @@
-import { eq } from 'drizzle-orm'
-import { getDb } from '../database'
+import { getDb, persistDb } from '../database'
 import { settings } from '../schema'
 import type { AppSettings } from '@shared/types'
 
@@ -34,5 +33,6 @@ export function setSettings(partial: Partial<AppSettings>): AppSettings {
       .run()
   }
 
+  persistDb()
   return getSettings()
 }

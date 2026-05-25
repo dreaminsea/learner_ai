@@ -80,4 +80,4 @@ export function closeDb(): void {
   sqlJs = null
 }
 
-export { schema }
+export { schema, persistDb }

@@ -1,5 +1,5 @@
 import { eq, and } from 'drizzle-orm'
-import { getDb } from '../database'
+import { getDb, persistDb } from '../database'
 import { knowledgeNodes, knowledgeEdges } from '../schema'
 import type { KnowledgeNode, KnowledgeEdge, KnowledgeGraphPatch } from '@shared/types'
 
@@ -21,6 +21,7 @@ export async function createNode(node: KnowledgeNode): Promise<KnowledgeNode> {
     updatedAt: node.updatedAt,
     metadata: node.metadata
   }).run()
+  persistDb()
   return node
 }
 
@@ -80,6 +81,7 @@ export async function updateNode(id: string, changes: Partial<KnowledgeNode>): P
   if (changes.metadata !== undefined) set['metadata'] = changes.metadata
 
   db.update(knowledgeNodes).set(set).where(eq(knowledgeNodes.id, id)).run()
+  persistDb()
 }
 
 export async function deleteNode(id: string): Promise<void> {
@@ -92,6 +94,7 @@ export async function deleteNode(id: string): Promise<void> {
   db.delete(knowledgeEdges).where(eq(knowledgeEdges.fromNodeId, id)).run()
   db.delete(knowledgeEdges).where(eq(knowledgeEdges.toNodeId, id)).run()
   db.delete(knowledgeNodes).where(eq(knowledgeNodes.id, id)).run()
+  persistDb()
 }
 
 // ---- Edges ----
@@ -108,6 +111,7 @@ export async function createEdge(edge: KnowledgeEdge): Promise<KnowledgeEdge> {
     createdAt: edge.createdAt,
     metadata: edge.metadata
   }).run()
+  persistDb()
   return edge
 }
 
@@ -142,6 +146,7 @@ export async function getEdgesForNode(nodeId: string): Promise<KnowledgeEdge[]> 
 export async function deleteEdge(id: string): Promise<void> {
   const db = getDb()
   db.delete(knowledgeEdges).where(eq(knowledgeEdges.id, id)).run()
+  persistDb()
 }
 
 // ---- Patch (agent-generated changes) ----
@@ -202,4 +207,6 @@ export async function applyGraphPatch(patch: KnowledgeGraphPatch): Promise<void>
       tx.delete(knowledgeEdges).where(eq(knowledgeEdges.id, id)).run()
     }
   })
+
+  persistDb()
 }

@@ -151,7 +151,7 @@ export const chatSessions = sqliteTable('chat_sessions', {
 export const chatMessages = sqliteTable('chat_messages', {
   id: text('id').primaryKey(),
   sessionId: text('session_id').notNull().references(() => chatSessions.id),
-  role: text('role', { enum: ['user', 'assistant', 'system'] }).notNull(),
+  role: text('role', { enum: ['user', 'assistant', 'system', 'tool'] }).notNull(),
   content: text('content').notNull(),
   referencedNodeIds: text('referenced_node_ids', { mode: 'json' }).notNull().default([]),
   proposedGraphPatch: text('proposed_graph_patch', { mode: 'json' }),

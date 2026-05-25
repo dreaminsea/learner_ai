@@ -45,7 +45,7 @@ export default function DashboardPage() {
           ) : plans.length === 0 ? (
             <div className="mt-2">
               <p className="text-sm text-muted-foreground">暂无学习计划</p>
-              <Button className="mt-2" size="sm" onClick={() => navigate(`${ROUTES.PLAN}/create`)}>
+              <Button className="mt-2" size="sm" onClick={() => navigate(ROUTES.CHAT)}>
                 创建学习计划
               </Button>
             </div>
