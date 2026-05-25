@@ -42,7 +42,15 @@ function persistDb(): void {
 export async function initDb(): Promise<SQLJsDatabase<typeof schema>> {
   if (drizzleDb) return drizzleDb
 
-  sqlJs = await initSqlJs()
+  // Locate sql.js WASM: in dev it's in node_modules, in production it's in extraResources
+  sqlJs = await initSqlJs({
+    locateFile: (file: string) => {
+      if (app.isPackaged) {
+        return join(process.resourcesPath, 'sql.js', file)
+      }
+      return join(__dirname, '../../node_modules/sql.js/dist', file)
+    }
+  })
   const dbPath = getDbPath()
   sqliteDb = loadOrCreateDb(dbPath)
 

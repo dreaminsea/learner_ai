@@ -54,7 +54,7 @@ export function registerChatIpcHandlers(): void {
       history,
       input.message,
       (chunk) => {
-        event.sender.send('chat:streamChunk', chunk)
+        event.sender.send('chat:streamChunk', { ...chunk, sessionId })
       }
     )
 

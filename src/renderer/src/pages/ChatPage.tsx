@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/ui/button'
 import { Plus, Send, Wrench, FileText, ChevronDown, ChevronRight, Brain, Loader2 } from 'lucide-react'
@@ -28,6 +28,7 @@ interface StreamChunk {
   content?: string
   toolName?: string
   toolArgs?: string
+  sessionId?: string
 }
 
 interface StreamingState {
@@ -35,6 +36,43 @@ interface StreamingState {
   content: string
   toolCalls: ToolCall[]
 }
+
+// ---- Module-level streaming state (survives component unmount) ----
+
+const streamSessions = new Map<string, StreamingState>()
+let streamListenerRegistered = false
+let globalRerender: (() => void) | null = null
+
+function ensureStreamListener(): void {
+  if (streamListenerRegistered) return
+  streamListenerRegistered = true
+
+  window.learnerAI.chat.onStreamChunk((chunk: unknown) => {
+    const c = chunk as StreamChunk
+    if (c.type === 'done' || !c.sessionId) return
+
+    const existing = streamSessions.get(c.sessionId) ?? { thinking: '', content: '', toolCalls: [] }
+    switch (c.type) {
+      case 'thinking':
+        existing.thinking += (c.content ?? '')
+        break
+      case 'text':
+        existing.content += (c.content ?? '')
+        break
+      case 'toolCall':
+        existing.toolCalls.push({
+          id: crypto.randomUUID(),
+          name: c.toolName ?? 'unknown',
+          arguments: c.toolArgs ?? '{}'
+        })
+        break
+    }
+    streamSessions.set(c.sessionId, existing)
+    globalRerender?.()
+  })
+}
+
+// ---- Components ----
 
 function ToolCallBubble({ name, args }: { name: string; args: string }) {
   const [expanded, setExpanded] = useState(false)
@@ -97,47 +135,26 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMsg[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
-  const [streaming, setStreaming] = useState<StreamingState | null>(null)
+  const [tick, setTick] = useState(0)
   const messagesEnd = useRef<HTMLDivElement>(null)
-  const streamingRef = useRef<StreamingState | null>(null)
   const activeSessionRef = useRef<string | null>(null)
-  const sendingRef = useRef(false)
+  const sendingSessionRef = useRef<string | null>(null)
 
-  // Keep refs in sync so the stream listener always knows the active session
+  // Keep activeSessionRef in sync
   useEffect(() => { activeSessionRef.current = activeSessionId }, [activeSessionId])
-  useEffect(() => { sendingRef.current = sending }, [sending])
+
+  // Register module-level stream listener on first mount, set rerender trigger
+  useEffect(() => {
+    ensureStreamListener()
+    globalRerender = () => setTick((t) => t + 1)
+    return () => { globalRerender = null }
+  }, [])
 
   useEffect(() => { loadSessions() }, [])
-  useEffect(() => { messagesEnd.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, streaming])
+  useEffect(() => { messagesEnd.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, tick])
 
-  // Streaming listener — only update UI if viewing the matching session
-  useEffect(() => {
-    const unlisten = window.learnerAI.chat.onStreamChunk((chunk: unknown) => {
-      const c = chunk as StreamChunk
-      if (c.type === 'done') return
-
-      setStreaming((prev) => {
-        const s = prev ?? { thinking: '', content: '', toolCalls: [] }
-        let next: StreamingState
-        switch (c.type) {
-          case 'thinking':
-            next = { ...s, thinking: s.thinking + (c.content ?? '') }
-            break
-          case 'text':
-            next = { ...s, content: s.content + (c.content ?? '') }
-            break
-          case 'toolCall':
-            next = { ...s, toolCalls: [...s.toolCalls, { id: crypto.randomUUID(), name: c.toolName ?? 'unknown', arguments: c.toolArgs ?? '{}' }] }
-            break
-          default:
-            next = s
-        }
-        streamingRef.current = next
-        return next
-      })
-    })
-    return () => { unlisten() }
-  }, [])
+  // Read current session's stream from module-level map
+  const streaming = activeSessionId ? (streamSessions.get(activeSessionId) ?? null) : null
 
   async function loadSessions(): Promise<void> {
     const raw = await window.learnerAI.chat.list() as ChatSession[]
@@ -145,11 +162,6 @@ export default function ChatPage() {
   }
 
   async function selectSession(sessionId: string): Promise<void> {
-    // If we're sending but switching to a different session, keep the send running in background
-    if (activeSessionRef.current !== sessionId) {
-      setStreaming(null)
-      streamingRef.current = null
-    }
     setActiveSessionId(sessionId)
     const data = await window.learnerAI.chat.get(sessionId) as { messages: ChatMsg[] }
     setMessages(data.messages ?? [])
@@ -159,8 +171,6 @@ export default function ChatPage() {
     const session = await window.learnerAI.chat.create() as ChatSession
     setActiveSessionId(session.id)
     setMessages([])
-    setStreaming(null)
-    streamingRef.current = null
     await loadSessions()
   }
 
@@ -170,7 +180,6 @@ export default function ChatPage() {
 
     setInput('')
     setSending(true)
-    setStreaming({ thinking: '', content: '', toolCalls: [] })
 
     const userMsg: ChatMsg = { role: 'user', content: text }
     setMessages((prev) => [...prev, userMsg])
@@ -185,14 +194,16 @@ export default function ChatPage() {
         planCreated?: { id: string; title: string }
       }
 
-      // Only update sessionId if this is still the relevant context
+      sendingSessionRef.current = null
+
       if (!activeSessionId) {
         setActiveSessionId(response.sessionId)
         await loadSessions()
       }
 
-      // Capture streaming state via ref, finalize message
-      const finalStreaming = streamingRef.current
+      // Read final streaming state from module-level map
+      const finalStreaming = streamSessions.get(response.sessionId)
+
       if (finalStreaming && (finalStreaming.content || finalStreaming.thinking || finalStreaming.toolCalls.length > 0)) {
         setMessages((prev) => [...prev, {
           role: 'assistant' as const,
@@ -204,8 +215,8 @@ export default function ChatPage() {
         setMessages((prev) => [...prev, ...response.messages.filter((m) => m.role !== 'user')])
       }
 
-      setStreaming(null)
-      streamingRef.current = null
+      // Clean up stream map
+      streamSessions.delete(response.sessionId)
 
       if (response.planCreated) {
         const pc = response.planCreated
@@ -215,8 +226,9 @@ export default function ChatPage() {
         }])
       }
     } catch (err) {
-      setStreaming(null)
-      streamingRef.current = null
+      if (activeSessionRef.current) {
+        streamSessions.delete(activeSessionRef.current)
+      }
       setMessages((prev) => [...prev, { role: 'assistant', content: `错误: ${(err as Error).message}` }])
     } finally {
       setSending(false)
@@ -231,10 +243,10 @@ export default function ChatPage() {
   }
 
   const hasContent = messages.filter((m) => m.role !== 'system').length > 0 || streaming
+  const isStreamingSession = sending && activeSessionId != null
 
   return (
     <div className="flex h-full">
-      {/* Session list sidebar */}
       <div className="flex w-56 shrink-0 flex-col border-r bg-card">
         <div className="border-b px-3 py-3">
           <Button className="w-full" size="sm" onClick={handleNewSession}>
@@ -251,7 +263,7 @@ export default function ChatPage() {
             >
               <div className="flex items-center gap-2">
                 <span className="truncate flex-1">{s.title}</span>
-                {sending && s.id === activeSessionId && <Loader2 className="h-3 w-3 animate-spin shrink-0" />}
+                {streamSessions.has(s.id) && <Loader2 className="h-3 w-3 animate-spin shrink-0" />}
               </div>
               <div className="text-xs text-muted-foreground">{new Date(s.updatedAt).toLocaleDateString('zh-CN')}</div>
             </button>
@@ -259,7 +271,6 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Chat area */}
       <div className="flex flex-1 flex-col">
         <div className="flex-1 overflow-auto p-4">
           {!hasContent ? (
