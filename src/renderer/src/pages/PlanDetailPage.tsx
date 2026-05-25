@@ -19,9 +19,9 @@ const TASK_TYPE_LABELS: Record<string, string> = {
   project: '项目'
 }
 
-function TaskRow({ task }: { task: PlanTask }) {
+function TaskRow({ task, onClick }: { task: PlanTask; onClick: () => void }) {
   return (
-    <li className="flex items-start gap-3 border-t py-3 first:border-0">
+    <li className="flex items-start gap-3 border-t py-3 first:border-0 cursor-pointer hover:bg-accent/50 rounded px-2 -mx-2 transition-colors" onClick={onClick}>
       <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted text-xs font-medium">
         {task.dayIndex}
       </span>
@@ -52,7 +52,7 @@ function TaskRow({ task }: { task: PlanTask }) {
   )
 }
 
-function StageCard({ stage, index }: { stage: PlanStage; index: number }) {
+function StageCard({ stage, index, onTaskClick }: { stage: PlanStage; index: number; onTaskClick: (taskId: string) => void }) {
   return (
     <div className="rounded-lg border bg-card shadow-sm">
       <div className="border-b px-4 py-3">
@@ -75,7 +75,7 @@ function StageCard({ stage, index }: { stage: PlanStage; index: number }) {
       </div>
       <ul className="px-4 py-2">
         {(stage.tasks ?? []).map((task) => (
-          <TaskRow key={task.id} task={task} />
+          <TaskRow key={task.id} task={task} onClick={() => onTaskClick(task.id)} />
         ))}
       </ul>
     </div>
@@ -150,7 +150,7 @@ export default function PlanDetailPage() {
 
       <div className="space-y-4">
         {plan.stages.map((stage, i) => (
-          <StageCard key={stage.id} stage={stage} index={i} />
+          <StageCard key={stage.id} stage={stage} index={i} onTaskClick={(taskId) => navigate(`/lecture/${taskId}`)} />
         ))}
       </div>
     </div>

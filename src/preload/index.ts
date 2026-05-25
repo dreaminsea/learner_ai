@@ -22,6 +22,10 @@ export type LearnerAIAPI = {
     onStreamChunk: (callback: (chunk: unknown) => void) => () => void
     rename: (sessionId: string, title: string) => Promise<void>
   }
+  lecture: {
+    get: (taskId: string) => Promise<unknown>
+    generate: (taskId: string) => Promise<unknown>
+  }
 }
 
 type StreamCallback = (chunk: unknown) => void
@@ -56,6 +60,10 @@ const api: LearnerAIAPI = {
       return () => { streamCallbacks.delete(callback) }
     },
     rename: (sessionId, title) => ipcRenderer.invoke('chat:rename', { sessionId, title })
+  },
+  lecture: {
+    get: (taskId) => ipcRenderer.invoke('lecture:get', taskId),
+    generate: (taskId) => ipcRenderer.invoke('lecture:generate', taskId)
   }
 }
 

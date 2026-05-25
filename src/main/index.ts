@@ -6,6 +6,7 @@ import { runMigrations } from './persistence/migrate'
 import { getSettings, setSettings } from './persistence/repositories/settingsRepository'
 import { registerPlanIpcHandlers } from './ipc/plan.ipc'
 import { registerChatIpcHandlers } from './ipc/chat.ipc'
+import { registerLectureIpcHandlers } from './ipc/lecture.ipc'
 
 const ALLOWED_URL_SCHEMES = ['https:', 'http:']
 
@@ -64,6 +65,7 @@ function registerIpcHandlers(): void {
 
   registerPlanIpcHandlers()
   registerChatIpcHandlers()
+  registerLectureIpcHandlers()
 }
 
 app.whenReady().then(async () => {

@@ -21,6 +21,7 @@ export default function App() {
             <Route path="/plan/create" element={<Navigate to="/" replace />} />
             <Route path="/plan/:id" element={<PlanDetailPage />} />
             <Route path="/lecture" element={<LecturePage />} />
+            <Route path="/lecture/:taskId" element={<LecturePage />} />
             <Route path="/graph" element={<KnowledgeGraphPage />} />
             <Route path="/chat" element={<Navigate to="/" replace />} />
             <Route path="/settings" element={<SettingsPage />} />
