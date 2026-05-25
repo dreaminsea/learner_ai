@@ -198,6 +198,13 @@ export default function LecturePage() {
           <p className="mt-3 text-sm leading-relaxed whitespace-pre-wrap">{lecture.summary}</p>
         </div>
       )}
+
+      {/* Assessment button */}
+      <div className="flex justify-center pt-4 border-t">
+        <Button size="lg" onClick={() => taskId && navigate(`/assessment/${taskId}`)}>
+          开始检测
+        </Button>
+      </div>
     </div>
   )
 }

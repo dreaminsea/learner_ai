@@ -30,14 +30,18 @@
       {
         "from": "node_modules/sql.js/dist",
         "to": "sql.js",
-        "filter": ["*.wasm"]
+        "filter": [
+          "*.wasm"
+        ]
       }
     ],
     "mac": {
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64"]
+          "arch": [
+            "arm64"
+          ]
         }
       ],
       "category": "public.app-category.education"
@@ -46,13 +50,16 @@
       "target": [
         {
           "target": "zip",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     }
   },
   "dependencies": {
     "@types/sql.js": "^1.4.11",
+    "@xyflow/react": "^12.10.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",

@@ -7,6 +7,7 @@ import LecturePage from './pages/LecturePage'
 import KnowledgeGraphPage from './pages/KnowledgeGraphPage'
 import ChatPage from './pages/ChatPage'
 import SettingsPage from './pages/SettingsPage'
+import AssessmentPage from './pages/AssessmentPage'
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
             <Route path="/plan/:id" element={<PlanDetailPage />} />
             <Route path="/lecture" element={<LecturePage />} />
             <Route path="/lecture/:taskId" element={<LecturePage />} />
+            <Route path="/assessment/:taskId" element={<AssessmentPage />} />
             <Route path="/graph" element={<KnowledgeGraphPage />} />
             <Route path="/chat" element={<Navigate to="/" replace />} />
             <Route path="/settings" element={<SettingsPage />} />

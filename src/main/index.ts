@@ -7,6 +7,8 @@ import { getSettings, setSettings } from './persistence/repositories/settingsRep
 import { registerPlanIpcHandlers } from './ipc/plan.ipc'
 import { registerChatIpcHandlers } from './ipc/chat.ipc'
 import { registerLectureIpcHandlers } from './ipc/lecture.ipc'
+import { registerAssessmentIpcHandlers } from './ipc/assessment.ipc'
+import { registerGraphIpcHandlers } from './ipc/graph.ipc'
 
 const ALLOWED_URL_SCHEMES = ['https:', 'http:']
 
@@ -66,6 +68,8 @@ function registerIpcHandlers(): void {
   registerPlanIpcHandlers()
   registerChatIpcHandlers()
   registerLectureIpcHandlers()
+  registerAssessmentIpcHandlers()
+  registerGraphIpcHandlers()
 }
 
 app.whenReady().then(async () => {

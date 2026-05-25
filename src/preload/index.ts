@@ -29,6 +29,16 @@ export type LearnerAIAPI = {
     onGenerated: (callback: (result: unknown) => void) => () => void
     onGenThinking: (callback: (data: unknown) => void) => () => void
   }
+  assessment: {
+    get: (taskId: string) => Promise<unknown>
+    generate: (taskId: string) => Promise<unknown>
+    submit: (input: { assessmentId: string; taskId: string; answers: unknown[] }) => Promise<unknown>
+  }
+  graph: {
+    get: (subject?: string) => Promise<unknown>
+    getNodeDetail: (nodeId: string) => Promise<unknown>
+    initFromPlan: (plan: unknown) => Promise<unknown>
+  }
 }
 
 type GeneratedCallback = (result: unknown) => void
@@ -88,6 +98,16 @@ const api: LearnerAIAPI = {
       thinkingCallbacks.add(callback)
       return () => { thinkingCallbacks.delete(callback) }
     }
+  },
+  assessment: {
+    get: (taskId) => ipcRenderer.invoke('assessment:get', taskId),
+    generate: (taskId) => ipcRenderer.invoke('assessment:generate', taskId),
+    submit: (input) => ipcRenderer.invoke('assessment:submit', input)
+  },
+  graph: {
+    get: (subject) => ipcRenderer.invoke('graph:get', subject),
+    getNodeDetail: (nodeId) => ipcRenderer.invoke('graph:getNodeDetail', nodeId),
+    initFromPlan: (plan) => ipcRenderer.invoke('graph:initFromPlan', plan)
   }
 }
 
