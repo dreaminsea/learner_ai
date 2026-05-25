@@ -22,3 +22,91 @@
   --radius-md: 0.375rem;
   --radius-lg: 0.5rem;
 }
+
+.obsidian-graph .react-flow__renderer {
+  background: #15171b;
+}
+
+.obsidian-graph .react-flow__node {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  transition:
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease;
+}
+
+.obsidian-graph .react-flow__node.selected {
+  box-shadow: none;
+}
+
+.obsidian-graph .react-flow__edge-path {
+  stroke-linecap: round;
+  transition:
+    opacity 220ms ease,
+    stroke-width 220ms ease;
+}
+
+.obsidian-graph .react-flow__edge.animated path {
+  stroke-dasharray: 6 7;
+  animation: knowledge-edge-flow 2.8s linear infinite;
+}
+
+.obsidian-graph .react-flow__edge.knowledge-edge-focus path {
+  filter: drop-shadow(0 0 3px rgb(191 219 254 / 0.28));
+}
+
+.obsidian-graph .react-flow__controls {
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 0.375rem;
+  background: rgb(26 29 35 / 0.9);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+
+.obsidian-graph .react-flow__controls-button {
+  border: 0;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  background: transparent;
+  color: rgb(203 213 225);
+}
+
+.obsidian-graph .react-flow__controls-button:hover {
+  background: rgb(255 255 255 / 0.08);
+}
+
+.obsidian-graph .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.knowledge-orb-core {
+  animation: knowledge-orb-breathe 3.2s ease-in-out infinite;
+}
+
+.knowledge-orb-root {
+  animation: knowledge-orb-root 2.4s ease-in-out infinite;
+}
+
+@keyframes knowledge-orb-breathe {
+  0%, 100% {
+    opacity: 0.86;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes knowledge-orb-root {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.18);
+  }
+}
+
+@keyframes knowledge-edge-flow {
+  to {
+    stroke-dashoffset: -26;
+  }
+}
