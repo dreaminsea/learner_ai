@@ -5,6 +5,7 @@ import { getDbPath, initDb, closeDb } from './persistence/database'
 import { runMigrations } from './persistence/migrate'
 import { getSettings, setSettings } from './persistence/repositories/settingsRepository'
 import { registerPlanIpcHandlers } from './ipc/plan.ipc'
+import { startReminder, stopReminder } from './services/reminderService'
 import { registerChatIpcHandlers } from './ipc/chat.ipc'
 import { registerLectureIpcHandlers } from './ipc/lecture.ipc'
 import { registerAssessmentIpcHandlers } from './ipc/assessment.ipc'
@@ -90,6 +91,7 @@ app.whenReady().then(async () => {
 
   registerIpcHandlers()
   createWindow()
+  startReminder()
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -114,5 +116,6 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  stopReminder()
   closeDb()
 })
