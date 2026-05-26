@@ -65,14 +65,14 @@ async function initGraphFromPlan(plan: StudyPlan): Promise<void> {
 
   for (const stage of plan.stages) {
     for (const task of (stage.tasks ?? [])) {
+      if (task.type === 'assessment' || task.type === 'project') continue
+
       for (const ref of (task.knowledgeNodeRefs ?? [])) {
         if (seen.has(ref.nodeId)) continue
         seen.add(ref.nodeId)
 
         let nodeType: KnowledgeNode['type'] = 'concept'
         if (task.type === 'practice') nodeType = 'method'
-        if (task.type === 'assessment') nodeType = 'problem_type'
-        if (task.type === 'project') nodeType = 'skill'
 
         const node: KnowledgeNode = {
           id: ref.nodeId,

@@ -119,8 +119,8 @@ function enrichPlan(
 }
 
 function validatePlanGraph(stages: PlanStage[]): void {
-  const BANNED_PATTERNS = /(基础|入门|概论|概述|预备|总结|复习|回顾|介绍|知识|学习|课程|检测|测试|考试|练习|应用|例子|示例)/i
-  const BANNED_EXACT = /^(检测|测试|考试|练习|总结|复习|应用|例子|示例)$/i
+  // Only block labels that are EXACTLY a generic word (e.g. "检测" is blocked, "极限检测" is fine)
+  const BANNED_EXACT = /^(基础|入门|概论|概述|预备|总结|复习|回顾|介绍|知识|学习|课程|检测|测试|考试|练习|应用|例子|示例)$/i
   const allRefs: Array<{ nodeId: string; label: string; taskIdx: number; stageIdx: number; taskType: string }> = []
   const refCountByNode = new Map<string, number>()
 
@@ -138,21 +138,15 @@ function validatePlanGraph(stages: PlanStage[]): void {
         throw new Error(`Stage ${si + 1}, Task ${ti + 1} 关联了 ${refs.length} 个知识点，超过上限 3。请减少为 1-3 个。`)
       }
 
-      // Assessment and project tasks must not introduce ANY knowledge nodes
-      if (task.type === 'assessment' || task.type === 'project') {
-        if (refs.length > 0) {
-          throw new Error(`"${task.title}" 是 ${task.type} 类型任务，不能关联知识点。检测和项目任务不应在知识图谱中创建节点。`)
-        }
-      }
+      // Assessment/project: can reference existing nodes but won't create new ones in graph
+      // (The initGraphFromPlan will skip node creation for assessment/project refs)
 
       for (const ref of refs) {
-        // Reject short labels
-        if (ref.label.length < 4) {
-          throw new Error(`知识点标签 "${ref.label}" 太短(${ref.label.length}字)，需要具体且有信息量的名称。`)
+        if (ref.label.length < 2) {
+          throw new Error(`知识点标签 "${ref.label}" 太短，需要具体名称。`)
         }
-        // Reject generic/vague labels
-        if (BANNED_PATTERNS.test(ref.label)) {
-          throw new Error(`知识点标签 "${ref.label}" 包含泛化词汇。请使用具体的概念/定理/方法名称，如"柯西收敛准则"而非"数列极限基础"。`)
+        if (BANNED_EXACT.test(ref.label)) {
+          throw new Error(`知识点标签 "${ref.label}" 是泛化词。请使用具体的概念/定理/方法名称，如"柯西收敛准则"而非"基础"。`)
         }
 
         // Track usage count per node
