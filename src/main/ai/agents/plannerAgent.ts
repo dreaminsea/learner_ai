@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import { DeepSeekClient } from '../deepseekClient'
 import { getPrompt } from '../promptRegistry'
 import { studyPlanSchema } from '@shared/schemas/planSchema'
-import type { StudyPlan, CreatePlanInput } from '@shared/types'
+import type { StudyPlan, CreatePlanInput, PlanStage } from '@shared/types'
 import type { LLMClient } from '../llmClient'
 
 const llmClient: LLMClient = new DeepSeekClient()
@@ -101,6 +101,9 @@ function enrichPlan(
     }
   })
 
+  // Validate knowledge graph structure
+  validatePlanGraph(stages)
+
   return {
     id: planId,
     title: rawPlan.title ?? `${input.subject} 学习计划`,
@@ -112,5 +115,62 @@ function enrichPlan(
     createdAt: now,
     updatedAt: now,
     metadata: {}
+  }
+}
+
+function validatePlanGraph(stages: PlanStage[]): void {
+  const allRefs: Array<{ nodeId: string; label: string; taskIdx: number; stageIdx: number }> = []
+  const seenLabels = new Set<string>()
+
+  for (let si = 0; si < stages.length; si++) {
+    const tasks = stages[si].tasks ?? []
+    for (let ti = 0; ti < tasks.length; ti++) {
+      const refs = tasks[ti].knowledgeNodeRefs ?? []
+
+      // Each task must have 1-3 knowledge nodes
+      if (refs.length === 0) {
+        throw new Error(`Stage ${si + 1}, Task ${ti + 1} 没有关联任何知识点。每个任务必须关联至少 1 个知识点(knowledgeNodeRefs)。`)
+      }
+      if (refs.length > 3) {
+        throw new Error(`Stage ${si + 1}, Task ${ti + 1} 关联了 ${refs.length} 个知识点，超过上限 3。请减少为 1-3 个。`)
+      }
+
+      // Check for duplicate labels (likely the same concept)
+      for (const ref of refs) {
+        if (seenLabels.has(ref.label)) continue
+        seenLabels.add(ref.label)
+      }
+
+      for (const ref of refs) {
+        allRefs.push({ nodeId: ref.nodeId, label: ref.label, taskIdx: ti, stageIdx: si })
+      }
+    }
+  }
+
+  // Must have at least one root: a node introduced in the first stage, day 1
+  const firstStage = stages[0]
+  const firstDayTasks = (firstStage?.tasks ?? []).filter((t) => (t.dayIndex ?? 1) === 1)
+  const rootNodes = firstDayTasks.flatMap((t) => (t.knowledgeNodeRefs ?? []).map((r) => r.label))
+
+  if (rootNodes.length === 0) {
+    throw new Error('计划缺少根节点。第一个 Stage 的 Day 1 必须引入至少一个全新的知识点作为根。')
+  }
+
+  // Review tasks should reference previously introduced nodes
+  for (let si = 0; si < stages.length; si++) {
+    const tasks = stages[si].tasks ?? []
+    for (const task of tasks) {
+      if (task.type === 'review') {
+        const refs = (task.knowledgeNodeRefs ?? []).map((r) => r.label)
+        const allExisting = allRefs
+          .filter((r) => r.stageIdx < si || (r.stageIdx === si && r.taskIdx < (task.dayIndex ?? 1)))
+          .map((r) => r.label)
+        for (const ref of refs) {
+          if (!allExisting.includes(ref)) {
+            throw new Error(`复习任务 "${task.title}" 引用了尚未引入的知识点 "${ref}"。复习任务只能引用之前已经学过的知识点。`)
+          }
+        }
+      }
+    }
   }
 }
