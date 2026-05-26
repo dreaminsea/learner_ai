@@ -8,8 +8,11 @@ import {
   updatePlanStatus,
   updateTaskStatus
 } from '../persistence/repositories/planRepository'
-import { createNode, createEdge, updateNode, getNode, deleteNode } from '../persistence/repositories/graphRepository'
+import { createNode, createEdge, updateNode, getNode, deleteNode, listAllNodes } from '../persistence/repositories/graphRepository'
+import { getLecture } from '../persistence/repositories/lectureRepository'
+import { DeepSeekClient } from '../ai/deepseekClient'
 import type { CreatePlanInput, StudyPlan, PlanStatus, TaskStatus, KnowledgeNode, KnowledgeEdge } from '@shared/types'
+import { randomUUID } from 'crypto'
 
 export function registerPlanIpcHandlers(): void {
   ipcMain.handle('plan:generate', async (_event, input: CreatePlanInput) => {
@@ -42,6 +45,10 @@ export function registerPlanIpcHandlers(): void {
       // Update knowledge node mastery when task is completed
       if (input.status === 'done') {
         await boostNodeMastery(input.taskId)
+        // Incrementally add knowledge nodes for this task
+        addNodesForTask(input.taskId).catch((err) =>
+          console.warn('[plan] Failed to add nodes for task:', (err as Error).message)
+        )
       }
     }
   )
@@ -66,6 +73,103 @@ export function registerPlanIpcHandlers(): void {
       }
     }
   )
+}
+
+async function addNodesForTask(taskId: string): Promise<void> {
+  const plans = await listPlans()
+  let taskTitle = ''
+  let subject = ''
+  let planTitle = ''
+  let lectureSummary = ''
+
+  for (const plan of plans) {
+    for (const stage of plan.stages) {
+      const task = (stage.tasks ?? []).find((t) => t.id === taskId)
+      if (task) {
+        taskTitle = task.title
+        subject = plan.subject
+        planTitle = plan.title
+
+        // Get lecture content for context
+        const lecture = await getLecture(taskId)
+        if (lecture) {
+          lectureSummary = (lecture.sections ?? []).map((s) => s.heading + ': ' + s.content.slice(0, 200)).join('\n')
+        }
+        break
+      }
+    }
+  }
+
+  if (!taskTitle) return
+
+  // Get existing nodes for context
+  const existingNodes = await listAllNodes()
+  const existingLabels = existingNodes.map((n) => n.label).join('、')
+
+  const client = new DeepSeekClient()
+  const prompt = `你是一个知识图谱构建助手。根据用户刚完成的学习任务，生成 1-3 个新的知识点加入知识网络。
+
+已存在的知识点（不要重复创建）：${existingLabels || '无'}
+
+要求：
+- 提取任务中涉及的核心概念/定理/方法作为知识点
+- 标签要具体（如"柯西收敛准则"），不要泛化词（如"基础"、"复习"）
+- 如果任务内容已被已有知识点覆盖，可以返回空数组
+
+返回纯 JSON：{"nodes":[{"label":"概念名","type":"concept|theorem|method","description":"简短描述"}]}`
+
+  try {
+    const result = await client.generateStructured<{
+      nodes?: Array<{ label: string; type: string; description: string }>
+    }>({
+      systemPrompt: prompt,
+      userPrompt: `学科：${subject}\n计划：${planTitle}\n任务：${taskTitle}\n讲义摘要：${lectureSummary.slice(0, 2000)}`,
+      responseSchema: {
+        safeParse: (v: unknown) => ({ success: true, data: v as { nodes?: Array<{ label: string; type: string; description: string }> } })
+      } as never,
+      maxTokens: 2000,
+      temperature: 0.5
+    })
+
+    const now = new Date().toISOString()
+    for (const n of (result.data.nodes ?? [])) {
+      if (!n.label || n.label.length < 2) continue
+      // Check for duplicate
+      if (existingNodes.some((e) => e.label === n.label)) continue
+
+      const nodeId = randomUUID()
+      await createNode({
+        id: nodeId,
+        label: n.label,
+        subject,
+        type: (n.type as KnowledgeNode['type']) ?? 'concept',
+        description: n.description ?? `来自学习任务「${taskTitle}」`,
+        mastery: 30, // initial mastery since task is done
+        confidence: 60,
+        sourceIds: [],
+        createdAt: now,
+        updatedAt: now,
+        metadata: { source: 'task_completion', taskId, planTitle }
+      })
+
+      // Connect to closest existing node by shared subject
+      const related = existingNodes.find((e) => e.subject === subject)
+      if (related) {
+        await createEdge({
+          id: randomUUID(),
+          fromNodeId: related.id,
+          toNodeId: nodeId,
+          type: 'related',
+          weight: 50,
+          evidence: `学习任务「${taskTitle}」`,
+          createdAt: now,
+          metadata: {}
+        }).catch(() => {})
+      }
+    }
+  } catch (err) {
+    console.warn('[plan] addNodesForTask failed:', (err as Error).message)
+  }
 }
 
 async function boostNodeMastery(taskId: string): Promise<void> {

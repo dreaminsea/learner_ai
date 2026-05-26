@@ -119,76 +119,28 @@ function enrichPlan(
 }
 
 function validatePlanGraph(stages: PlanStage[]): void {
-  // Only block labels that are EXACTLY a generic word (e.g. "检测" is blocked, "极限检测" is fine)
-  const BANNED_EXACT = /^(基础|入门|概论|概述|预备|总结|复习|回顾|介绍|知识|学习|课程|检测|测试|考试|练习|应用|例子|示例)$/i
-  const allRefs: Array<{ nodeId: string; label: string; taskIdx: number; stageIdx: number; taskType: string }> = []
-  const refCountByNode = new Map<string, number>()
+  const BANNED_EXACT = /^(基础|入门|概论|概述|预备|总结|复习|回顾|检测|测试|考试|练习|例子|示例)$/i
+  const seen = new Set<string>()
 
-  for (let si = 0; si < stages.length; si++) {
-    const tasks = stages[si].tasks ?? []
-    for (let ti = 0; ti < tasks.length; ti++) {
-      const task = tasks[ti]
-      const refs = (task.knowledgeNodeRefs ?? []).filter((r) => r.label && r.label.trim().length > 0)
-
-      // Each task must have 1-3 knowledge nodes
-      if (refs.length === 0) {
-        throw new Error(`Stage ${si + 1}, Task ${ti + 1} 没有关联任何知识点。每个任务必须关联至少 1 个知识点。`)
-      }
-      if (refs.length > 3) {
-        throw new Error(`Stage ${si + 1}, Task ${ti + 1} 关联了 ${refs.length} 个知识点，超过上限 3。请减少为 1-3 个。`)
-      }
-
-      // Assessment/project: can reference existing nodes but won't create new ones in graph
-      // (The initGraphFromPlan will skip node creation for assessment/project refs)
-
-      for (const ref of refs) {
-        if (ref.label.length < 2) {
-          throw new Error(`知识点标签 "${ref.label}" 太短，需要具体名称。`)
-        }
-        if (BANNED_EXACT.test(ref.label)) {
-          throw new Error(`知识点标签 "${ref.label}" 是泛化词。请使用具体的概念/定理/方法名称，如"柯西收敛准则"而非"基础"。`)
-        }
-
-        // Track usage count per node
-        const count = (refCountByNode.get(ref.nodeId) ?? 0) + 1
-        refCountByNode.set(ref.nodeId, count)
-
-        allRefs.push({ nodeId: ref.nodeId, label: ref.label, taskIdx: ti, stageIdx: si, taskType: task.type })
-      }
-    }
-  }
-
-  // Limit: max 5 tasks can reference the same node
-  for (const [nodeId, count] of refCountByNode) {
-    if (count > 5) {
-      const label = allRefs.find((r) => r.nodeId === nodeId)?.label ?? nodeId
-      throw new Error(`知识点 "${label}" 被 ${count} 个任务引用，超过上限 5。请拆分或减少引用。`)
-    }
-  }
-
-  // Must have at least one root
+  // Only first stage day 1 needs root nodes; other tasks are empty (incremental graph)
   const firstStage = stages[0]
   const firstDayTasks = (firstStage?.tasks ?? []).filter((t) => (t.dayIndex ?? 1) === 1)
-  const rootNodes = firstDayTasks.flatMap((t) => (t.knowledgeNodeRefs ?? []).filter((r) => r.label?.length >= 3))
+  const rootRefs = firstDayTasks.flatMap((t) => (t.knowledgeNodeRefs ?? []).filter((r) => r.label?.length >= 2))
 
-  if (rootNodes.length === 0) {
-    throw new Error('计划缺少根节点。第一个 Stage 的 Day 1 必须引入至少一个全新的知识点。')
+  if (rootRefs.length === 0) {
+    throw new Error('第一个 Stage 的 Day 1 必须包含 2-5 个根知识点(knowledgeNodeRefs)，作为知识网络的起点。')
+  }
+  if (rootRefs.length > 5) {
+    throw new Error(`根知识点过多(${rootRefs.length}个)，应控制在 2-5 个。`)
   }
 
-  // Review tasks must reference existing nodes
-  for (let si = 0; si < stages.length; si++) {
-    const tasks = stages[si].tasks ?? []
-    for (const task of tasks) {
-      if (task.type !== 'review') continue
-      const refLabels = (task.knowledgeNodeRefs ?? []).map((r) => r.label)
-      const existingLabels = allRefs
-        .filter((r) => r.stageIdx < si || (r.stageIdx === si && r.taskIdx < (task.dayIndex ?? 999)))
-        .map((r) => r.label)
-      for (const lbl of refLabels) {
-        if (!existingLabels.includes(lbl)) {
-          throw new Error(`复习任务 "${task.title}" 引用了尚未引入的知识点 "${lbl}"。复习只能引用已学知识点。`)
-        }
-      }
+  for (const ref of rootRefs) {
+    if (BANNED_EXACT.test(ref.label)) {
+      throw new Error(`根知识点标签 "${ref.label}" 是泛化词。请使用具体概念名称，如"柯西收敛准则"。`)
     }
+    if (seen.has(ref.label)) {
+      throw new Error(`根知识点 "${ref.label}" 重复出现。每个概念只能有一个节点。`)
+    }
+    seen.add(ref.label)
   }
 }
