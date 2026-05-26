@@ -177,6 +177,7 @@ export default function PlanDetailPage() {
   const [plan, setPlan] = useState<StudyPlan | null>(null)
   const [loading, setLoading] = useState(true)
   const [tick, setTick] = useState(0)
+  const [statusUpdating, setStatusUpdating] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -208,9 +209,16 @@ export default function PlanDetailPage() {
   )
 
   async function handleStatusChange(status: string): Promise<void> {
-    if (!plan) return
-    await window.learnerAI.plan.updateStatus(plan.id, status)
-    setPlan({ ...plan, status: status as typeof plan.status })
+    if (!plan || statusUpdating) return
+    setStatusUpdating(true)
+    try {
+      await window.learnerAI.plan.updateStatus(plan.id, status)
+      setPlan({ ...plan, status: status as typeof plan.status })
+    } catch (err) {
+      console.error('Failed to update plan status:', err)
+    } finally {
+      setStatusUpdating(false)
+    }
   }
 
   async function handleTaskClick(taskId: string, taskTitle: string): Promise<void> {
@@ -267,17 +275,23 @@ export default function PlanDetailPage() {
             {plan.stages.length} 个阶段 · {totalTasks} 个任务 · 创建于 {new Date(plan.createdAt).toLocaleDateString('zh-CN')}
           </p>
           <div className="mt-3 flex gap-2">
-            {plan.status === 'draft' && (
-              <Button size="sm" onClick={() => handleStatusChange('active')}>开始学习</Button>
-            )}
-            {plan.status === 'active' && (
+            {statusUpdating ? (
+              <span className="text-sm text-muted-foreground">更新中…</span>
+            ) : (
               <>
-                <Button size="sm" variant="outline" onClick={() => handleStatusChange('paused')}>暂停</Button>
-                <Button size="sm" onClick={() => handleStatusChange('completed')}>完成</Button>
+                {plan.status === 'draft' && (
+                  <Button size="sm" onClick={() => handleStatusChange('active')}>开始学习</Button>
+                )}
+                {plan.status === 'active' && (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => handleStatusChange('paused')}>暂停</Button>
+                    <Button size="sm" onClick={() => handleStatusChange('completed')}>完成</Button>
+                  </>
+                )}
+                {plan.status === 'paused' && (
+                  <Button size="sm" onClick={() => handleStatusChange('active')}>继续学习</Button>
+                )}
               </>
-            )}
-            {plan.status === 'paused' && (
-              <Button size="sm" onClick={() => handleStatusChange('active')}>继续学习</Button>
             )}
           </div>
         </div>
