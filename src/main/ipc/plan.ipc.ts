@@ -7,7 +7,7 @@ import {
   updatePlanStatus,
   updateTaskStatus
 } from '../persistence/repositories/planRepository'
-import { createNode, createEdge } from '../persistence/repositories/graphRepository'
+import { createNode, createEdge, updateNode, getNode } from '../persistence/repositories/graphRepository'
 import type { CreatePlanInput, StudyPlan, PlanStatus, TaskStatus, KnowledgeNode, KnowledgeEdge } from '@shared/types'
 
 export function registerPlanIpcHandlers(): void {
@@ -37,6 +37,11 @@ export function registerPlanIpcHandlers(): void {
     'plan:updateTaskStatus',
     async (_event, input: { taskId: string; status: TaskStatus }) => {
       await updateTaskStatus(input.taskId, input.status)
+
+      // Update knowledge node mastery when task is completed
+      if (input.status === 'done') {
+        await boostNodeMastery(input.taskId)
+      }
     }
   )
 
@@ -46,6 +51,29 @@ export function registerPlanIpcHandlers(): void {
       await updatePlanStatus(input.planId, input.status)
     }
   )
+}
+
+async function boostNodeMastery(taskId: string): Promise<void> {
+  // Find the task in plans to get knowledgeNodeRefs
+  const plans = await listPlans()
+  for (const plan of plans) {
+    for (const stage of plan.stages) {
+      const task = (stage.tasks ?? []).find((t) => t.id === taskId)
+      if (task) {
+        for (const ref of (task.knowledgeNodeRefs ?? [])) {
+          const node = await getNode(ref.nodeId)
+          if (node) {
+            const newMastery = Math.min(100, node.mastery + 15)
+            await updateNode(ref.nodeId, {
+              mastery: newMastery,
+              lastStudiedAt: new Date().toISOString()
+            } as Partial<import('@shared/types').KnowledgeNode>)
+          }
+        }
+        return
+      }
+    }
+  }
 }
 
 async function initGraphFromPlan(plan: StudyPlan): Promise<void> {
