@@ -11,7 +11,9 @@ import {
 import type { ChatSession, ChatMessage as DBChatMessage } from '@shared/types'
 import type { ChatMessage as LLMChatMessage } from '../ai/llmClient'
 import type { ChatTurn } from '../ai/agents/chatAgent'
+import OpenAI from 'openai'
 import { randomUUID } from 'crypto'
+import { getSettings } from '../persistence/repositories/settingsRepository'
 
 export function registerChatIpcHandlers(): void {
   ipcMain.handle('chat:send', async (event, input: {
@@ -78,12 +80,13 @@ export function registerChatIpcHandlers(): void {
       })
     }
 
-    // Auto-rename new sessions based on conversation content
-    const sessionForRename = await getSession(sessionId)
-    if (sessionForRename && sessionForRename.messages.length <= 3 && sessionForRename.title === input.message.slice(0, 50)) {
-      const autoTitle = generateTitle(turn, input.message)
-      if (autoTitle) {
-        await renameSession(sessionId, autoTitle)
+    // Auto-rename new sessions using AI summary
+    const isFirstExchange = !existingSession || existingSession.messages.length === 0
+    if (isFirstExchange) {
+      const aiMsgs = turn.messages.filter((m) => m.role === 'assistant' && m.content)
+      const aiContent = aiMsgs.map((m) => m.content).join(' ').slice(0, 500)
+      if (aiContent) {
+        generateTitleAsync(sessionId, input.message, aiContent)
       }
     }
 
@@ -132,23 +135,33 @@ export function registerChatIpcHandlers(): void {
   })
 }
 
-function generateTitle(turn: ChatTurn, userMessage: string): string | null {
-  // If a plan was created, use the plan title
-  if (turn.planCreated?.title) {
-    return turn.planCreated.title
-  }
+async function generateTitleAsync(sessionId: string, userMsg: string, aiContent: string): Promise<void> {
+  try {
+    const settings = getSettings()
+    if (!settings.deepseekApiKey) return
 
-  // Otherwise, extract a title from the AI's response
-  for (const msg of turn.messages) {
-    if (msg.role === 'assistant' && msg.content) {
-      // Take first meaningful line
-      const line = msg.content.split('\n')[0].replace(/^[#*>\s]+/, '').trim()
-      if (line.length > 5) {
-        return line.slice(0, 50) + (line.length > 50 ? '…' : '')
-      }
+    const client = new OpenAI({
+      apiKey: settings.deepseekApiKey,
+      baseURL: 'https://api.deepseek.com'
+    })
+
+    const response = await client.chat.completions.create({
+      model: 'deepseek-v4-flash',
+      temperature: 0.3,
+      max_tokens: 50,
+      messages: [
+        { role: 'system', content: '你是一个标题生成器。根据用户和AI的对话内容，生成一个简短的标题（不超过15个字）。只输出标题本身，不要引号、标点或任何额外文字。' },
+        { role: 'user', content: `用户: ${userMsg.slice(0, 200)}\nAI: ${aiContent.slice(0, 300)}\n\n请为这段对话生成一个简短标题。` }
+      ]
+    })
+
+    const title = response.choices[0]?.message?.content?.trim()
+    if (title && title.length > 1) {
+      const finalTitle = title.length > 30 ? title.slice(0, 28) + '…' : title
+      await renameSession(sessionId, finalTitle)
+      console.log('[chat] Auto-renamed session to:', finalTitle)
     }
+  } catch (err) {
+    console.warn('[chat] Auto-rename failed:', (err as Error).message)
   }
-
-  // Fallback: use user message
-  return userMessage.slice(0, 50)
 }
