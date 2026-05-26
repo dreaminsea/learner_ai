@@ -148,7 +148,7 @@ async function initGraphFromPlan(plan: StudyPlan): Promise<void> {
     }
   }
 
-  // Create prerequisite edges within each stage (sequential tasks → sequential knowledge)
+  // Create prerequisite edges (max 1 per node: connect to next node only)
   for (let i = 1; i < allNodes.length; i++) {
     const edge: KnowledgeEdge = {
       id: `${allNodes[i - 1].id}-${allNodes[i].id}`,
@@ -160,39 +160,30 @@ async function initGraphFromPlan(plan: StudyPlan): Promise<void> {
       createdAt: now,
       metadata: {}
     }
-    try {
-      await createEdge(edge)
-    } catch {
-      // Edge may already exist
-    }
+    try { await createEdge(edge) } catch { /* exists */ }
   }
 
-  // Add cross-stage related edges
+  // Related edges: only connect adjacent nodes within stage (max 1 per node pair)
   for (const stage of plan.stages) {
     const stageNodes: string[] = []
     for (const task of (stage.tasks ?? [])) {
       for (const ref of (task.knowledgeNodeRefs ?? [])) {
-        if (seen.has(ref.nodeId)) stageNodes.push(ref.nodeId)
+        if (seen.has(ref.nodeId) && !stageNodes.includes(ref.nodeId)) stageNodes.push(ref.nodeId)
       }
     }
-    for (let i = 0; i < stageNodes.length; i++) {
-      for (let j = i + 1; j < stageNodes.length; j++) {
-        const edge: KnowledgeEdge = {
-          id: `${stageNodes[i]}-${stageNodes[j]}-related`,
-          fromNodeId: stageNodes[i],
-          toNodeId: stageNodes[j],
-          type: 'related',
-          weight: 40,
-          evidence: `同一学习阶段「${stage.title}」`,
-          createdAt: now,
-          metadata: {}
-        }
-        try {
-          await createEdge(edge)
-        } catch {
-          // Edge may already exist
-        }
+    // Only connect consecutive pairs, not all-to-all
+    for (let i = 1; i < stageNodes.length; i++) {
+      const edge: KnowledgeEdge = {
+        id: `${stageNodes[i - 1]}-${stageNodes[i]}-related`,
+        fromNodeId: stageNodes[i - 1],
+        toNodeId: stageNodes[i],
+        type: 'related',
+        weight: 40,
+        evidence: `同一学习阶段「${stage.title}」`,
+        createdAt: now,
+        metadata: {}
       }
+      try { await createEdge(edge) } catch { /* exists */ }
     }
   }
 }

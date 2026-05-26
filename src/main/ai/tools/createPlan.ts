@@ -122,20 +122,19 @@ async function initGraphFromPlan(plan: StudyPlan): Promise<void> {
   }
 
   for (const [, ids] of stageNodeIds) {
-    for (let i = 0; i < ids.length; i++) {
-      for (let j = i + 1; j < ids.length; j++) {
-        const edge: KnowledgeEdge = {
-          id: `${ids[i]}-${ids[j]}-related`,
-          fromNodeId: ids[i],
-          toNodeId: ids[j],
-          type: 'related',
-          weight: 40,
-          evidence: '同一学习阶段',
-          createdAt: now,
-          metadata: {}
-        }
-        try { await createEdge(edge) } catch { /* already exists */ }
+    // Only connect consecutive pairs, not all-to-all (avoids O(n²) edges)
+    for (let i = 1; i < ids.length; i++) {
+      const edge: KnowledgeEdge = {
+        id: `${ids[i - 1]}-${ids[i]}-related`,
+        fromNodeId: ids[i - 1],
+        toNodeId: ids[i],
+        type: 'related',
+        weight: 40,
+        evidence: '同一学习阶段',
+        createdAt: now,
+        metadata: {}
       }
+      try { await createEdge(edge) } catch { /* already exists */ }
     }
   }
 }
