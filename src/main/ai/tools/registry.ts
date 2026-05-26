@@ -3,6 +3,8 @@ import { searchNodesTool } from './searchNodes'
 import { getPlansTool } from './getPlans'
 import { createPlanTool } from './createPlan'
 import { getUserContextTool } from './getUserContext'
+import { getNodeDetailTool } from './getNodeDetail'
+import { proposeGraphUpdateTool } from './proposeGraphUpdate'
 
 class ToolRegistry {
   private tools = new Map<string, ToolDefinition>()
@@ -12,6 +14,8 @@ class ToolRegistry {
     this.register(getPlansTool)
     this.register(createPlanTool)
     this.register(getUserContextTool)
+    this.register(getNodeDetailTool)
+    this.register(proposeGraphUpdateTool)
   }
 
   register(tool: ToolDefinition): void {
