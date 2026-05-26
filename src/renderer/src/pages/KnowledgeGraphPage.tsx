@@ -7,12 +7,17 @@ import type { ReactFlowInstance } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Search, X } from 'lucide-react'
 
+interface LinkedTask {
+  taskId: string; taskTitle: string; planId: string; planTitle: string; status: string
+}
+
 interface NodeDetail {
   node: {
     id: string; label: string; type: string; description: string
     mastery: number; subject: string; createdAt: string; updatedAt: string
   }
   edges: Array<{ fromNodeId: string; toNodeId: string; type: string; weight: number }>
+  linkedTasks?: LinkedTask[]
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -1154,21 +1159,23 @@ export default function KnowledgeGraphPage() {
                 </div>
               </div>
 
-              <div>
-                <span className="text-xs text-slate-400">掌握度</span>
-                <div className="mt-1 flex items-center gap-2">
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${Number(currentNode.data.mastery ?? 0)}%`,
-                        backgroundColor: masteryColor(Number(currentNode.data.mastery ?? 0))
-                      }}
-                    />
+              {currentDetail?.linkedTasks && currentDetail.linkedTasks.length > 0 && (
+                <div>
+                  <span className="text-xs text-slate-400">关联任务</span>
+                  <div className="mt-1 space-y-1">
+                    {currentDetail.linkedTasks.map((t) => (
+                      <button
+                        key={t.taskId}
+                        className="w-full text-left text-xs text-slate-300 hover:text-blue-400 truncate block"
+                        onClick={() => navigate(`/lecture/${t.taskId}`)}
+                      >
+                        {t.taskTitle}
+                        <span className="ml-1 text-slate-500">({t.planTitle})</span>
+                      </button>
+                    ))}
                   </div>
-                  <span className="text-xs font-bold">{Number(currentNode.data.mastery ?? 0)}%</span>
                 </div>
-              </div>
+              )}
 
               {Boolean(currentDetail?.node.description ?? currentNode.data.description) && (
                 <p className="text-sm leading-6 text-slate-300">

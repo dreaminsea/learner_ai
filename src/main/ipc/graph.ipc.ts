@@ -4,7 +4,7 @@ import {
   getEdgesForNode, createNode, createEdge
 } from '../persistence/repositories/graphRepository'
 import { listPlans } from '../persistence/repositories/planRepository'
-import type { KnowledgeNode, KnowledgeEdge } from '@shared/types'
+import type { KnowledgeNode, KnowledgeEdge, PlanTask } from '@shared/types'
 
 export function registerGraphIpcHandlers(): void {
   ipcMain.handle('graph:get', async (_event, subject?: string) => {
@@ -48,12 +48,33 @@ export function registerGraphIpcHandlers(): void {
     const node = await getNode(nodeId)
     if (!node) return null
     const edges = await getEdgesForNode(nodeId)
+
+    // Find which plan tasks reference this node
+    const plans = await listPlans()
+    const linkedTasks: Array<{ taskId: string; taskTitle: string; planId: string; planTitle: string; status: string }> = []
+    for (const plan of plans) {
+      for (const stage of plan.stages) {
+        for (const task of (stage.tasks ?? [])) {
+          if ((task.knowledgeNodeRefs ?? []).some((r) => r.nodeId === nodeId || r.label === node.label)) {
+            linkedTasks.push({
+              taskId: task.id,
+              taskTitle: task.title,
+              planId: plan.id,
+              planTitle: plan.title,
+              status: task.status
+            })
+          }
+        }
+      }
+    }
+
     return {
       node,
       edges: edges.map((e) => ({
         id: e.id, fromNodeId: e.fromNodeId, toNodeId: e.toNodeId,
         type: e.type, weight: e.weight
-      }))
+      })),
+      linkedTasks
     }
   })
 }
