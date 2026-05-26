@@ -119,56 +119,76 @@ function enrichPlan(
 }
 
 function validatePlanGraph(stages: PlanStage[]): void {
-  const allRefs: Array<{ nodeId: string; label: string; taskIdx: number; stageIdx: number }> = []
-  const seenLabels = new Set<string>()
+  const GENERIC_LABELS = /^(基础|入门|概论|概述|预备|总结|复习|回顾|介绍|概念|知识|学习|课程)/i
+  const allRefs: Array<{ nodeId: string; label: string; taskIdx: number; stageIdx: number; taskType: string }> = []
+  const refCountByNode = new Map<string, number>()
 
   for (let si = 0; si < stages.length; si++) {
     const tasks = stages[si].tasks ?? []
     for (let ti = 0; ti < tasks.length; ti++) {
-      const refs = tasks[ti].knowledgeNodeRefs ?? []
+      const task = tasks[ti]
+      const refs = (task.knowledgeNodeRefs ?? []).filter((r) => r.label && r.label.trim().length > 0)
 
       // Each task must have 1-3 knowledge nodes
       if (refs.length === 0) {
-        throw new Error(`Stage ${si + 1}, Task ${ti + 1} 没有关联任何知识点。每个任务必须关联至少 1 个知识点(knowledgeNodeRefs)。`)
+        throw new Error(`Stage ${si + 1}, Task ${ti + 1} 没有关联任何知识点。每个任务必须关联至少 1 个知识点。`)
       }
       if (refs.length > 3) {
         throw new Error(`Stage ${si + 1}, Task ${ti + 1} 关联了 ${refs.length} 个知识点，超过上限 3。请减少为 1-3 个。`)
       }
 
-      // Check for duplicate labels (likely the same concept)
-      for (const ref of refs) {
-        if (seenLabels.has(ref.label)) continue
-        seenLabels.add(ref.label)
+      // Assessment and project tasks should not introduce new concepts
+      if ((task.type === 'assessment' || task.type === 'project') && si === 0 && ti < 2) {
+        // Only block if they're early (first 2 tasks)
       }
 
       for (const ref of refs) {
-        allRefs.push({ nodeId: ref.nodeId, label: ref.label, taskIdx: ti, stageIdx: si })
+        // Reject generic/vague labels
+        if (ref.label.length < 3) {
+          throw new Error(`知识点标签 "${ref.label}" 太短，需要具体且有信息量的名称。`)
+        }
+        if (GENERIC_LABELS.test(ref.label)) {
+          throw new Error(`知识点标签 "${ref.label}" 过于泛化。请使用具体的概念/定理/方法名称，如"柯西收敛准则"而非"数列基础"。`)
+        }
+
+        // Track usage count per node
+        const count = (refCountByNode.get(ref.nodeId) ?? 0) + 1
+        refCountByNode.set(ref.nodeId, count)
+
+        allRefs.push({ nodeId: ref.nodeId, label: ref.label, taskIdx: ti, stageIdx: si, taskType: task.type })
       }
     }
   }
 
-  // Must have at least one root: a node introduced in the first stage, day 1
-  const firstStage = stages[0]
-  const firstDayTasks = (firstStage?.tasks ?? []).filter((t) => (t.dayIndex ?? 1) === 1)
-  const rootNodes = firstDayTasks.flatMap((t) => (t.knowledgeNodeRefs ?? []).map((r) => r.label))
-
-  if (rootNodes.length === 0) {
-    throw new Error('计划缺少根节点。第一个 Stage 的 Day 1 必须引入至少一个全新的知识点作为根。')
+  // Limit: max 5 tasks can reference the same node
+  for (const [nodeId, count] of refCountByNode) {
+    if (count > 5) {
+      const label = allRefs.find((r) => r.nodeId === nodeId)?.label ?? nodeId
+      throw new Error(`知识点 "${label}" 被 ${count} 个任务引用，超过上限 5。请拆分或减少引用。`)
+    }
   }
 
-  // Review tasks should reference previously introduced nodes
+  // Must have at least one root
+  const firstStage = stages[0]
+  const firstDayTasks = (firstStage?.tasks ?? []).filter((t) => (t.dayIndex ?? 1) === 1)
+  const rootNodes = firstDayTasks.flatMap((t) => (t.knowledgeNodeRefs ?? []).filter((r) => r.label?.length >= 3))
+
+  if (rootNodes.length === 0) {
+    throw new Error('计划缺少根节点。第一个 Stage 的 Day 1 必须引入至少一个全新的知识点。')
+  }
+
+  // Review tasks must reference existing nodes
   for (let si = 0; si < stages.length; si++) {
     const tasks = stages[si].tasks ?? []
     for (const task of tasks) {
-      if (task.type === 'review') {
-        const refs = (task.knowledgeNodeRefs ?? []).map((r) => r.label)
-        const allExisting = allRefs
-          .filter((r) => r.stageIdx < si || (r.stageIdx === si && r.taskIdx < (task.dayIndex ?? 1)))
-          .map((r) => r.label)
-        for (const ref of refs) {
-          if (!allExisting.includes(ref)) {
-            throw new Error(`复习任务 "${task.title}" 引用了尚未引入的知识点 "${ref}"。复习任务只能引用之前已经学过的知识点。`)
-          }
+      if (task.type !== 'review') continue
+      const refLabels = (task.knowledgeNodeRefs ?? []).map((r) => r.label)
+      const existingLabels = allRefs
+        .filter((r) => r.stageIdx < si || (r.stageIdx === si && r.taskIdx < (task.dayIndex ?? 999)))
+        .map((r) => r.label)
+      for (const lbl of refLabels) {
+        if (!existingLabels.includes(lbl)) {
+          throw new Error(`复习任务 "${task.title}" 引用了尚未引入的知识点 "${lbl}"。复习只能引用已学知识点。`)
         }
       }
     }
