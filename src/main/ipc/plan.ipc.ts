@@ -54,24 +54,40 @@ export function registerPlanIpcHandlers(): void {
 }
 
 async function boostNodeMastery(taskId: string): Promise<void> {
-  // Find the task in plans to get knowledgeNodeRefs
   const plans = await listPlans()
   for (const plan of plans) {
     for (const stage of plan.stages) {
       const task = (stage.tasks ?? []).find((t) => t.id === taskId)
-      if (task) {
-        for (const ref of (task.knowledgeNodeRefs ?? [])) {
-          const node = await getNode(ref.nodeId)
-          if (node) {
-            const newMastery = Math.min(100, node.mastery + 15)
-            await updateNode(ref.nodeId, {
-              mastery: newMastery,
-              lastStudiedAt: new Date().toISOString()
-            } as Partial<import('@shared/types').KnowledgeNode>)
+      if (!task) continue
+
+      for (const ref of (task.knowledgeNodeRefs ?? [])) {
+        const node = await getNode(ref.nodeId)
+        if (!node) continue
+
+        // Count how many tasks in this plan reference this node (total exposure)
+        let totalRefs = 0
+        let doneRefs = 0
+        for (const s of plan.stages) {
+          for (const t of (s.tasks ?? [])) {
+            if ((t.knowledgeNodeRefs ?? []).some((r) => r.nodeId === ref.nodeId)) {
+              totalRefs++
+              if (t.status === 'done') doneRefs++
+            }
           }
         }
-        return
+
+        // More exposure = higher potential mastery
+        // Base 15, max 30 per completion. Rare nodes (<3 refs) get bigger boost.
+        const boost = totalRefs <= 2 ? 25 : totalRefs <= 4 ? 18 : 15
+        const baseMastery = Math.min(100, Math.round((doneRefs / Math.max(totalRefs, 1)) * 80))
+        const newMastery = Math.min(100, Math.max(node.mastery, baseMastery + (node.mastery < 80 ? boost : 5)))
+
+        await updateNode(ref.nodeId, {
+          mastery: newMastery,
+          lastStudiedAt: new Date().toISOString()
+        } as Partial<import('@shared/types').KnowledgeNode>)
       }
+      return
     }
   }
 }
