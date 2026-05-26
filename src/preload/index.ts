@@ -13,6 +13,7 @@ export type LearnerAIAPI = {
     list: () => Promise<unknown>
     get: (id: string) => Promise<unknown>
     updateTaskStatus: (taskId: string, status: string) => Promise<void>
+    updateStatus: (planId: string, status: string) => Promise<void>
   }
   chat: {
     send: (input: { sessionId?: string; message: string }) => Promise<unknown>
@@ -72,7 +73,9 @@ const api: LearnerAIAPI = {
     list: () => ipcRenderer.invoke('plan:list'),
     get: (id) => ipcRenderer.invoke('plan:get', id),
     updateTaskStatus: (taskId, status) =>
-      ipcRenderer.invoke('plan:updateTaskStatus', { taskId, status })
+      ipcRenderer.invoke('plan:updateTaskStatus', { taskId, status }),
+    updateStatus: (planId, status) =>
+      ipcRenderer.invoke('plan:updateStatus', { planId, status })
   },
   chat: {
     send: (input) => ipcRenderer.invoke('chat:send', input),

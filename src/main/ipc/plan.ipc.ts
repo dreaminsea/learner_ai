@@ -4,10 +4,11 @@ import {
   createPlan,
   getPlan,
   listPlans,
+  updatePlanStatus,
   updateTaskStatus
 } from '../persistence/repositories/planRepository'
 import { createNode, createEdge } from '../persistence/repositories/graphRepository'
-import type { CreatePlanInput, StudyPlan, TaskStatus, KnowledgeNode, KnowledgeEdge } from '@shared/types'
+import type { CreatePlanInput, StudyPlan, PlanStatus, TaskStatus, KnowledgeNode, KnowledgeEdge } from '@shared/types'
 
 export function registerPlanIpcHandlers(): void {
   ipcMain.handle('plan:generate', async (_event, input: CreatePlanInput) => {
@@ -36,6 +37,13 @@ export function registerPlanIpcHandlers(): void {
     'plan:updateTaskStatus',
     async (_event, input: { taskId: string; status: TaskStatus }) => {
       await updateTaskStatus(input.taskId, input.status)
+    }
+  )
+
+  ipcMain.handle(
+    'plan:updateStatus',
+    async (_event, input: { planId: string; status: PlanStatus }) => {
+      await updatePlanStatus(input.planId, input.status)
     }
   )
 }

@@ -207,6 +207,12 @@ export default function PlanDetailPage() {
     Array.from(lectureGens.values()).filter((e) => !e.done).map((e) => e.taskId)
   )
 
+  async function handleStatusChange(status: string): Promise<void> {
+    if (!plan) return
+    await window.learnerAI.plan.updateStatus(plan.id, status)
+    setPlan({ ...plan, status: status as typeof plan.status })
+  }
+
   async function handleTaskClick(taskId: string, taskTitle: string): Promise<void> {
     // If already generated, navigate directly
     if (plan?.stages.some((s) => (s.tasks ?? []).some((t) => t.id === taskId && !!t.lectureId))) {
@@ -260,6 +266,20 @@ export default function PlanDetailPage() {
           <p className="mt-1 text-xs text-muted-foreground">
             {plan.stages.length} 个阶段 · {totalTasks} 个任务 · 创建于 {new Date(plan.createdAt).toLocaleDateString('zh-CN')}
           </p>
+          <div className="mt-3 flex gap-2">
+            {plan.status === 'draft' && (
+              <Button size="sm" onClick={() => handleStatusChange('active')}>开始学习</Button>
+            )}
+            {plan.status === 'active' && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => handleStatusChange('paused')}>暂停</Button>
+                <Button size="sm" onClick={() => handleStatusChange('completed')}>完成</Button>
+              </>
+            )}
+            {plan.status === 'paused' && (
+              <Button size="sm" onClick={() => handleStatusChange('active')}>继续学习</Button>
+            )}
+          </div>
         </div>
       </div>
 

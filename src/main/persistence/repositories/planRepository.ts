@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { getDb, persistDb } from '../database'
 import { plans, planStages, planTasks } from '../schema'
-import type { StudyPlan, PlanStage, PlanTask, TaskStatus } from '@shared/types'
+import type { StudyPlan, PlanStage, PlanTask, PlanStatus, TaskStatus } from '@shared/types'
 
 export async function createPlan(plan: StudyPlan): Promise<StudyPlan> {
   const db = getDb()
@@ -121,6 +121,15 @@ export async function listPlans(): Promise<StudyPlan[]> {
   return Promise.all(
     rows.map(async (r) => (await getPlan(r.id))!)
   )
+}
+
+export async function updatePlanStatus(planId: string, status: PlanStatus): Promise<void> {
+  const db = getDb()
+  db.update(plans)
+    .set({ status, updatedAt: new Date().toISOString() })
+    .where(eq(plans.id, planId))
+    .run()
+  persistDb()
 }
 
 export async function updateTaskStatus(taskId: string, status: TaskStatus): Promise<void> {
