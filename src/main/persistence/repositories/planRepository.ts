@@ -132,6 +132,28 @@ export async function updatePlanStatus(planId: string, status: PlanStatus): Prom
   persistDb()
 }
 
+export async function deletePlan(planId: string): Promise<string[]> {
+  const plan = await getPlan(planId)
+  if (!plan) return []
+
+  const db = getDb()
+  const nodeIds: string[] = []
+
+  for (const stage of plan.stages) {
+    for (const task of (stage.tasks ?? [])) {
+      for (const ref of (task.knowledgeNodeRefs ?? [])) {
+        if (!nodeIds.includes(ref.nodeId)) nodeIds.push(ref.nodeId)
+      }
+      db.delete(planTasks).where(eq(planTasks.id, task.id)).run()
+    }
+    db.delete(planStages).where(eq(planStages.id, stage.id)).run()
+  }
+
+  db.delete(plans).where(eq(plans.id, planId)).run()
+  persistDb()
+  return nodeIds
+}
+
 export async function updateTaskStatus(taskId: string, status: TaskStatus): Promise<void> {
   const db = getDb()
   const update: Record<string, unknown> = { status }

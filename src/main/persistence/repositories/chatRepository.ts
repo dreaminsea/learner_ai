@@ -76,6 +76,12 @@ export async function addMessage(message: ChatMessage): Promise<void> {
     .run()
 }
 
+export async function deleteSession(id: string): Promise<void> {
+  const db = getDb()
+  db.delete(chatMessages).where(eq(chatMessages.sessionId, id)).run()
+  db.delete(chatSessions).where(eq(chatSessions.id, id)).run()
+}
+
 export async function renameSession(id: string, title: string): Promise<void> {
   const db = getDb()
   db.update(chatSessions)

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '../components/ui/button'
-import { ArrowLeft, Loader2, CheckCircle2, Clock, Brain, ChevronDown, ChevronRight, Circle, Play, CheckCheck, FileText } from 'lucide-react'
+import { ArrowLeft, Loader2, CheckCircle2, Clock, Brain, ChevronDown, ChevronRight, Circle, Play, CheckCheck, FileText, Trash2 } from 'lucide-react'
 import type { StudyPlan, PlanStage, PlanTask, TaskStatus } from '@shared/types'
 
 const STATUS_LABELS: Record<string, string> = {
@@ -336,6 +336,19 @@ export default function PlanDetailPage() {
               <Button size="sm" onClick={() => handleStatusChange('active')}>继续学习</Button>
             ) : null}
           </div>
+        </div>
+        <div>
+          <button
+            className="p-2 text-muted-foreground hover:text-destructive rounded hover:bg-destructive/10 transition-colors"
+            onClick={async () => {
+              if (!confirm('确定要删除这个学习计划吗？此操作不可撤销。')) return
+              const delNodes = confirm('是否同时删除关联的知识节点？\n\n选"确定"将删除计划中的所有知识点。\n选"取消"将保留知识节点。')
+              await window.learnerAI.plan.delete(plan.id, delNodes)
+              navigate('/plan')
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/ui/button'
-import { Plus, Send, Wrench, FileText, ChevronDown, ChevronRight, Brain, Loader2, Pencil, Check, X } from 'lucide-react'
+import { Plus, Send, Wrench, FileText, ChevronDown, ChevronRight, Brain, Loader2, Pencil, Check, X, Trash2 } from 'lucide-react'
 
 interface ToolCall {
   id: string
@@ -310,6 +310,22 @@ export default function ChatPage() {
                       onClick={(e) => { e.stopPropagation(); startRename(s.id, s.title) }}
                     >
                       <Pencil className="h-3 w-3" />
+                    </button>
+                    <button
+                      className="shrink-0 p-0.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive"
+                      onClick={async (e) => {
+                        e.stopPropagation()
+                        if (confirm('确定要删除这个对话吗？')) {
+                          await window.learnerAI.chat.delete(s.id)
+                          if (activeSessionId === s.id) {
+                            setActiveSessionId(null)
+                            setMessages([])
+                          }
+                          await loadSessions()
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
                     </button>
                   </div>
                   <div className="text-xs text-muted-foreground">{new Date(s.updatedAt).toLocaleDateString('zh-CN')}</div>

@@ -14,6 +14,7 @@ export type LearnerAIAPI = {
     get: (id: string) => Promise<unknown>
     updateTaskStatus: (taskId: string, status: string) => Promise<void>
     updateStatus: (planId: string, status: string) => Promise<void>
+    delete: (planId: string, deleteNodes: boolean) => Promise<void>
   }
   chat: {
     send: (input: { sessionId?: string; message: string }) => Promise<unknown>
@@ -22,6 +23,7 @@ export type LearnerAIAPI = {
     create: () => Promise<unknown>
     onStreamChunk: (callback: (chunk: unknown) => void) => () => void
     rename: (sessionId: string, title: string) => Promise<void>
+    delete: (sessionId: string) => Promise<void>
   }
   lecture: {
     get: (taskId: string) => Promise<unknown>
@@ -75,7 +77,9 @@ const api: LearnerAIAPI = {
     updateTaskStatus: (taskId, status) =>
       ipcRenderer.invoke('plan:updateTaskStatus', { taskId, status }),
     updateStatus: (planId, status) =>
-      ipcRenderer.invoke('plan:updateStatus', { planId, status })
+      ipcRenderer.invoke('plan:updateStatus', { planId, status }),
+    delete: (planId, deleteNodes) =>
+      ipcRenderer.invoke('plan:delete', { planId, deleteNodes })
   },
   chat: {
     send: (input) => ipcRenderer.invoke('chat:send', input),
@@ -86,7 +90,8 @@ const api: LearnerAIAPI = {
       streamCallbacks.add(callback)
       return () => { streamCallbacks.delete(callback) }
     },
-    rename: (sessionId, title) => ipcRenderer.invoke('chat:rename', { sessionId, title })
+    rename: (sessionId, title) => ipcRenderer.invoke('chat:rename', { sessionId, title }),
+    delete: (sessionId) => ipcRenderer.invoke('chat:delete', sessionId)
   },
   lecture: {
     get: (taskId) => ipcRenderer.invoke('lecture:get', taskId),

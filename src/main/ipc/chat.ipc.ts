@@ -6,7 +6,8 @@ import {
   getSession,
   listSessions,
   addMessage,
-  renameSession
+  renameSession,
+  deleteSession
 } from '../persistence/repositories/chatRepository'
 import type { ChatSession, ChatMessage as DBChatMessage } from '@shared/types'
 import type { ChatMessage as LLMChatMessage } from '../ai/llmClient'
@@ -131,6 +132,11 @@ export function registerChatIpcHandlers(): void {
 
   ipcMain.handle('chat:rename', async (_event, input: { sessionId: string; title: string }) => {
     await renameSession(input.sessionId, input.title)
+    persistDb()
+  })
+
+  ipcMain.handle('chat:delete', async (_event, sessionId: string) => {
+    await deleteSession(sessionId)
     persistDb()
   })
 }

@@ -4,10 +4,11 @@ import {
   createPlan,
   getPlan,
   listPlans,
+  deletePlan,
   updatePlanStatus,
   updateTaskStatus
 } from '../persistence/repositories/planRepository'
-import { createNode, createEdge, updateNode, getNode } from '../persistence/repositories/graphRepository'
+import { createNode, createEdge, updateNode, getNode, deleteNode } from '../persistence/repositories/graphRepository'
 import type { CreatePlanInput, StudyPlan, PlanStatus, TaskStatus, KnowledgeNode, KnowledgeEdge } from '@shared/types'
 
 export function registerPlanIpcHandlers(): void {
@@ -49,6 +50,20 @@ export function registerPlanIpcHandlers(): void {
     'plan:updateStatus',
     async (_event, input: { planId: string; status: PlanStatus }) => {
       await updatePlanStatus(input.planId, input.status)
+    }
+  )
+
+  ipcMain.handle(
+    'plan:delete',
+    async (_event, input: { planId: string; deleteNodes: boolean }) => {
+      const nodeIds = await deletePlan(input.planId)
+
+      // Optionally delete associated knowledge nodes and edges
+      if (input.deleteNodes) {
+        for (const nodeId of nodeIds) {
+          try { await deleteNode(nodeId) } catch { /* ignore */ }
+        }
+      }
     }
   )
 }
